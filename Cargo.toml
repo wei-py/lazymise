@@ -2,6 +2,13 @@
 name = "lazymise"
 version = "0.1.0"
 edition = "2024"
+description = "A terminal UI for managing mise tools, versions, tasks, and environments"
+license = "MIT"
+repository = "https://github.com/wei-py/lazymise"
+homepage = "https://github.com/wei-py/lazymise"
+readme = "README.md"
+keywords = ["mise", "tui", "cli", "developer-tools"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 anyhow = "1.0.104"

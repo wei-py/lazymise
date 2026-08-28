@@ -5,6 +5,7 @@ mod ui;
 
 use std::{
     env,
+    ffi::OsString,
     io::{self, Stdout},
     path::Path,
     process::{Command, Stdio},
@@ -23,12 +24,62 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 fn main() -> Result<()> {
+    match startup_action(env::args_os().skip(1))? {
+        StartupAction::Help => {
+            print!("{HELP}");
+            Ok(())
+        }
+        StartupAction::Version => {
+            println!("lazymise {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        StartupAction::Run => run_tui(),
+    }
+}
+
+fn run_tui() -> Result<()> {
     let mut app = App::loading();
     let _guard = TerminalGuard;
     let mut terminal = setup_terminal()?;
     let loader = Some(start_snapshot_load());
     run(&mut terminal, &mut app, loader)
 }
+
+#[derive(Debug, PartialEq, Eq)]
+enum StartupAction {
+    Run,
+    Help,
+    Version,
+}
+
+fn startup_action(args: impl IntoIterator<Item = OsString>) -> Result<StartupAction> {
+    let mut args = args.into_iter();
+    let action = match args.next() {
+        None => StartupAction::Run,
+        Some(argument) if argument == "-h" || argument == "--help" => StartupAction::Help,
+        Some(argument) if argument == "-V" || argument == "--version" => StartupAction::Version,
+        Some(argument) => bail!(
+            "unknown argument `{}`; use `lazymise --help`",
+            argument.to_string_lossy()
+        ),
+    };
+    if let Some(argument) = args.next() {
+        bail!("unexpected argument `{}`", argument.to_string_lossy());
+    }
+    Ok(action)
+}
+
+const HELP: &str = concat!(
+    "lazymise ",
+    env!("CARGO_PKG_VERSION"),
+    "\n",
+    env!("CARGO_PKG_DESCRIPTION"),
+    "\n\n",
+    "Usage: lazymise [OPTIONS]\n\n",
+    "Options:\n",
+    "  -h, --help       Print help\n",
+    "  -V, --version    Print version\n"
+);
 
 type SnapshotReceiver = Receiver<Result<mise::Snapshot>>;
 
@@ -255,5 +306,40 @@ struct TerminalGuard;
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         restore_terminal();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(values: &[&str]) -> Vec<OsString> {
+        values.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn recognizes_noninteractive_startup_flags() {
+        assert_eq!(startup_action(args(&[])).unwrap(), StartupAction::Run);
+        assert_eq!(
+            startup_action(args(&["--help"])).unwrap(),
+            StartupAction::Help
+        );
+        assert_eq!(
+            startup_action(args(&["-V"])).unwrap(),
+            StartupAction::Version
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_and_extra_arguments() {
+        assert!(startup_action(args(&["--unknown"])).is_err());
+        assert!(startup_action(args(&["--help", "extra"])).is_err());
+    }
+
+    #[test]
+    fn help_describes_homebrew_testable_flags() {
+        assert!(HELP.contains("lazymise [OPTIONS]"));
+        assert!(HELP.contains("--help"));
+        assert!(HELP.contains("--version"));
     }
 }
