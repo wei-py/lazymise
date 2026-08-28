@@ -44,7 +44,9 @@ lazymise
 
 ### Homebrew
 
-A Homebrew formula is planned. Until the tap is published, use the source installation above.
+```bash
+brew install wei-py/tap/lazymise
+```
 
 ## Command-line options
 
