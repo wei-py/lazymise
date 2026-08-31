@@ -76,7 +76,7 @@ pub struct Snapshot {
 impl Default for Snapshot {
     fn default() -> Self {
         Self {
-            mise_version: "loading…".into(),
+            mise_version: "—".into(),
             tools: Vec::new(),
             updates: Vec::new(),
             tasks: Vec::new(),
