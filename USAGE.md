@@ -105,18 +105,29 @@ cargo run
 | `Esc`       | 清除搜索并关闭输入框，或取消选择器                    |
 | `Space`     | 在 Updates 页面选中或取消选中更新项                   |
 
-搜索覆盖 Tools、Updates、Tasks、Environment、Config、System 和 Command Log。工具注册表可按工具名和描述搜索；版本选择器可按版本号搜索。
+搜索覆盖 Tools、Updates、Tasks、Environment、Config、System 和 Command Log。工具注册表支持按工具名、描述、后端及多个关键词筛选；输入没有注册表匹配项的 `github:owner/repository` 后按 `Enter`，可直接查询该后端的版本。版本选择器可按版本号搜索。
 
 ### 工具管理
+工具列表的“最新”列仅评估已安装且当前启用的版本：`是` 表示 `mise outdated` 未报告更新，`否` 表示存在更新，`—` 表示该版本未启用或尚未安装。
+
 
 | 按键 | 生效位置   | 操作                                                         |
 | ---- | ---------- | ------------------------------------------------------------ |
-| `a`  | 任意主页面 | 打开 mise registry，选择工具，再选择远程版本并加入当前 scope |
+| `a`  | 任意主页面 | 打开 mise registry；选择器内按 `c` 可输入自定义后端工具      |
+| `A`  | 任意主页面 | 直接输入 `github:owner/repo`、`npm:package` 等后端工具标识   |
 | `v`  | Tools      | 查询选中工具的所有远程版本，选择后安装并激活到当前 scope     |
 | `i`  | Tools      | 查询选中工具的所有远程版本，仅安装选中版本，不修改配置       |
 | `d`  | Tools      | 请求确认后卸载选中的已安装版本                               |
 | `p`  | 任意主页面 | 将写入作用域设为 Project                                     |
 | `G`  | 任意主页面 | 将写入作用域设为 Global                                      |
+
+不在 mise registry 中的工具也可以添加。例如 LazySQL：
+
+```text
+A → github:jorgerojas26/lazysql → 选择版本
+```
+
+也可以粘贴 GitHub URL，或输入 `owner/repository`，lazymise 会转换为 `github:` 后端标识。
 
 对应的 mise 命令：
 
@@ -261,8 +272,8 @@ eval "$(mise activate zsh)"
 
 1. 按 `a`。
 2. lazymise 调用 `mise registry --json` 加载官方注册表。
-3. 按 `/` 搜索工具名或描述，例如 `java`、`ripgrep`、`AI`。
-4. `Enter` 进入该工具的远程版本列表。
+3. 按 `/` 搜索工具名、描述或后端，例如 `java`、`AI`、`github:owner`。
+4. `Enter` 选择注册表工具；若输入的是无匹配项的 `github:owner/repository`，则直接查询该后端。
 5. 搜索并选择版本。
 6. lazymise 根据顶部 scope 执行 Project 或 Global 的 `mise use`。
 
