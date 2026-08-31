@@ -50,16 +50,24 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install mise toolchain
+        uses: jdx/mise-action@v4
         with:
-          targets: ${{ matrix.target }}
+          version: 2026.8.14
+          cache: true
+          # Keep this version in sync with mise.toml so older tags can be rebuilt.
+          mise_toml: |
+            [tools]
+            rust = { version = "1.94.0", profile = "minimal" }
+
+      - name: Install Rust target
+        run: mise exec -- rustup target add ${{ matrix.target }}
 
       - name: Run tests
-        run: cargo test --locked
+        run: mise exec -- cargo test --locked
 
       - name: Build release binary
-        run: cargo build --locked --release --target ${{ matrix.target }}
+        run: mise exec -- cargo build --locked --release --target ${{ matrix.target }}
         env:
           MACOSX_DEPLOYMENT_TARGET: "12.0"
 
