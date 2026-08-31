@@ -1,6 +1,6 @@
 [package]
 name = "lazymise"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A terminal UI for managing mise tools, versions, tasks, and environments"
 license = "MIT"
