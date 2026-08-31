@@ -103,7 +103,7 @@ fn run(
                     app.finish_loading(result);
                     loader = None;
                 }
-                Err(TryRecvError::Empty) => app.tick(),
+                Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => {
                     app.finish_loading(Err(anyhow!("mise loader stopped unexpectedly")));
                     loader = None;

@@ -222,6 +222,9 @@ pub enum Overlay {
         arguments: String,
         help: String,
     },
+    CustomTool {
+        input: String,
+    },
     ConfirmDelete {
         tool: String,
         version: String,
@@ -276,7 +279,6 @@ pub struct App {
     pub logs: Vec<CommandLog>,
     pub commands: Vec<CommandSpec>,
     pub loading: bool,
-    pub loading_tick: usize,
 }
 
 impl App {
@@ -292,15 +294,11 @@ impl App {
             detail_scroll: 0,
             selected_updates: HashSet::new(),
             search: String::new(),
-            status: settings
-                .language
-                .text("Loading mise environment…", "正在加载 mise 环境…")
-                .into(),
+            status: settings.language.text("Ready", "就绪").into(),
             overlay: Overlay::None,
             logs: Vec::new(),
             commands: Vec::new(),
             loading: true,
-            loading_tick: 0,
         }
     }
 
@@ -332,12 +330,6 @@ impl App {
                     success: false,
                 });
             }
-        }
-    }
-
-    pub fn tick(&mut self) {
-        if self.loading {
-            self.loading_tick = self.loading_tick.wrapping_add(1);
         }
     }
 
@@ -374,13 +366,6 @@ impl App {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             return Action::Quit;
         }
-        if self.loading {
-            return if key.code == KeyCode::Char('q') {
-                Action::Quit
-            } else {
-                Action::None
-            };
-        }
         if !matches!(self.overlay, Overlay::None) {
             return self.handle_overlay_key(key);
         }
@@ -395,6 +380,7 @@ impl App {
             KeyCode::Char('p') => self.set_scope(Scope::Project),
             KeyCode::Char('G') => self.set_scope(Scope::Global),
             KeyCode::Char('a') => self.open_registry(),
+            KeyCode::Char('A') => self.open_custom_tool(),
             KeyCode::Char('v') if self.page == Page::Tools && self.focus == Focus::List => {
                 self.open_versions_for_selected(VersionIntent::Use);
             }
@@ -665,6 +651,7 @@ impl App {
                 arguments,
                 help,
             } => self.handle_command_builder_key(key, spec, arguments, help),
+            Overlay::CustomTool { input } => self.handle_custom_tool_key(key, input),
             Overlay::ConfirmDelete { tool, version } => match key.code {
                 KeyCode::Enter | KeyCode::Char('y') => Action::DeleteVersion { tool, version },
                 KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('q') => Action::None,
@@ -871,7 +858,21 @@ impl App {
     fn handle_picker_key(&mut self, key: KeyEvent, picker: &mut Picker) -> Action {
         if picker.searching() {
             match key.code {
-                KeyCode::Enter => set_picker_searching(picker, false),
+                KeyCode::Enter => {
+                    let direct_tool = match picker {
+                        Picker::Registry { items, query, .. }
+                            if !items.iter().any(|item| registry_matches(item, query)) =>
+                        {
+                            custom_backend_query(query)
+                        }
+                        _ => None,
+                    };
+                    if let Some(tool) = direct_tool {
+                        self.open_versions(&tool, VersionIntent::Add);
+                        return Action::None;
+                    }
+                    set_picker_searching(picker, false);
+                }
                 KeyCode::Esc => {
                     picker_query_mut(picker).clear();
                     set_picker_searching(picker, false);
@@ -892,6 +893,11 @@ impl App {
                 _ => {}
             }
             self.overlay = Overlay::Picker(picker.clone());
+            return Action::None;
+        }
+
+        if matches!(picker, Picker::Registry { .. }) && key.code == KeyCode::Char('c') {
+            self.open_custom_tool();
             return Action::None;
         }
 
@@ -919,6 +925,41 @@ impl App {
             }
         }
     }
+    fn handle_custom_tool_key(&mut self, key: KeyEvent, mut input: String) -> Action {
+        match key.code {
+            KeyCode::Esc => Action::None,
+            KeyCode::Backspace => {
+                input.pop();
+                self.overlay = Overlay::CustomTool { input };
+                Action::None
+            }
+            KeyCode::Enter => {
+                let Some(tool) = normalize_custom_tool(&input) else {
+                    self.status = self
+                        .locale
+                        .text("Enter a mise tool spec", "请输入 mise 工具标识")
+                        .into();
+                    self.overlay = Overlay::CustomTool { input };
+                    return Action::None;
+                };
+                self.open_versions(&tool, VersionIntent::Add);
+                Action::None
+            }
+            KeyCode::Char(character)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                input.push(character);
+                self.overlay = Overlay::CustomTool { input };
+                Action::None
+            }
+            _ => {
+                self.overlay = Overlay::CustomTool { input };
+                Action::None
+            }
+        }
+    }
 
     fn choose_picker_item(&mut self, picker: &Picker) -> Action {
         match picker {
@@ -932,7 +973,8 @@ impl App {
                     .iter()
                     .filter(|item| registry_matches(item, query))
                     .nth(*selected)
-                    .map(|item| item.name.clone());
+                    .map(|item| item.name.clone())
+                    .or_else(|| custom_backend_query(query));
                 if let Some(tool) = tool {
                     self.open_versions(&tool, VersionIntent::Add);
                 }
@@ -1045,6 +1087,7 @@ impl App {
                     query: String::new(),
                     searching: false,
                 });
+                self.status = self.locale.text("Ready", "就绪").into();
             }
             Err(error) => {
                 self.status = format!(
@@ -1053,6 +1096,11 @@ impl App {
                 )
             }
         }
+    }
+    fn open_custom_tool(&mut self) {
+        self.overlay = Overlay::CustomTool {
+            input: String::new(),
+        };
     }
 
     fn open_versions_for_selected(&mut self, intent: VersionIntent) {
@@ -1077,6 +1125,7 @@ impl App {
                     searching: false,
                     intent,
                 });
+                self.status = self.locale.text("Ready", "就绪").into();
             }
             Err(error) => {
                 self.status = format!(
@@ -1273,15 +1322,44 @@ fn command_belongs_to_page(page: Page, command: &str) -> bool {
 fn contains_case_insensitive(value: &str, query: &str) -> bool {
     value.to_lowercase().contains(&query.to_lowercase())
 }
-
-fn registry_matches(item: &RegistryTool, query: &str) -> bool {
-    query.is_empty()
-        || contains_case_insensitive(&item.name, query)
-        || contains_case_insensitive(&item.description, query)
+pub(crate) fn registry_matches(item: &RegistryTool, query: &str) -> bool {
+    query.split_whitespace().all(|term| {
+        contains_case_insensitive(&item.name, term)
+            || contains_case_insensitive(&item.description, term)
+            || item
+                .backends
+                .iter()
+                .any(|backend| contains_case_insensitive(backend, term))
+    })
 }
 
 fn version_matches(item: &RemoteVersion, query: &str) -> bool {
     query.is_empty() || contains_case_insensitive(&item.version, query)
+}
+fn normalize_custom_tool(input: &str) -> Option<String> {
+    let input = input.trim().trim_end_matches('/');
+    if input.is_empty() {
+        return None;
+    }
+    if let Some(repository) = input.strip_prefix("https://github.com/") {
+        let repository = repository.strip_suffix(".git").unwrap_or(repository);
+        return (!repository.is_empty()).then(|| format!("github:{repository}"));
+    }
+    if !input.contains(':')
+        && !input.starts_with('@')
+        && let Some((owner, repository)) = input.split_once('/')
+        && !owner.is_empty()
+        && !repository.is_empty()
+        && !repository.contains('/')
+    {
+        let repository = repository.strip_suffix(".git").unwrap_or(repository);
+        return Some(format!("github:{owner}/{repository}"));
+    }
+    Some(input.to_owned())
+}
+pub(crate) fn custom_backend_query(query: &str) -> Option<String> {
+    let tool = normalize_custom_tool(query)?;
+    (tool.contains(':') && !tool.chars().any(char::is_whitespace)).then_some(tool)
 }
 
 fn picker_query_mut(picker: &mut Picker) -> &mut String {
@@ -1421,7 +1499,6 @@ mod tests {
                 },
             ],
             loading: false,
-            loading_tick: 0,
         }
     }
 
@@ -1514,10 +1591,58 @@ mod tests {
     }
 
     #[test]
-    fn startup_remains_quittable_while_mise_loads() {
+    fn startup_is_interactive_while_mise_loads_silently() {
         let mut app = App::loading();
-
+        assert!(!app.status.to_lowercase().contains("load"));
+        assert!(!app.status.contains("加载"));
+        assert_eq!(app.handle_key(key('j')), Action::None);
+        assert_eq!(app.page, Page::Tools);
         assert_eq!(app.handle_key(key('q')), Action::Quit);
+    }
+
+    #[test]
+    fn custom_backend_shortcut_opens_tool_input() {
+        let mut app = app();
+
+        assert_eq!(app.handle_key(key('A')), Action::None);
+        assert!(matches!(
+            app.overlay,
+            Overlay::CustomTool { ref input } if input.is_empty()
+        ));
+    }
+
+    #[test]
+    fn custom_tool_normalizes_github_shorthand_and_urls() {
+        assert_eq!(
+            normalize_custom_tool("jorgerojas26/lazysql"),
+            Some("github:jorgerojas26/lazysql".into())
+        );
+        assert_eq!(
+            normalize_custom_tool("https://github.com/jorgerojas26/lazysql.git/"),
+            Some("github:jorgerojas26/lazysql".into())
+        );
+        assert_eq!(
+            normalize_custom_tool("npm:@scope/tool"),
+            Some("npm:@scope/tool".into())
+        );
+        assert_eq!(normalize_custom_tool("  "), None);
+    }
+    #[test]
+    fn registry_search_matches_backends_and_multiple_terms() {
+        let tool = RegistryTool {
+            name: "example".into(),
+            description: "Fast code formatter".into(),
+            backends: vec!["github:owner/example".into(), "cargo:example".into()],
+        };
+
+        assert!(registry_matches(&tool, "github:owner"));
+        assert!(registry_matches(&tool, "formatter github"));
+        assert!(!registry_matches(&tool, "formatter npm"));
+        assert_eq!(
+            custom_backend_query("github:jorgerojas26/lazysql"),
+            Some("github:jorgerojas26/lazysql".into())
+        );
+        assert_eq!(custom_backend_query("lazysql"), None);
     }
 
     #[test]
