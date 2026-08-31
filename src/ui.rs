@@ -8,7 +8,7 @@ use ratatui::{
     },
 };
 
-use crate::app::{App, Focus, Overlay, Page, Picker};
+use crate::app::{App, Focus, Overlay, Page, Picker, custom_backend_query, registry_matches};
 
 const ACCENT: Color = Color::Cyan;
 const MUTED: Color = Color::DarkGray;
@@ -27,7 +27,7 @@ pub fn render(frame: &mut Frame<'_>, app: &App) {
 
     let body = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(26), Constraint::Min(45)])
+        .constraints([Constraint::Length(30), Constraint::Min(45)])
         .split(sections[1]);
     render_sidebar(frame, body[0], app);
     render_page(frame, body[1], app);
@@ -138,7 +138,7 @@ fn content_panes(area: Rect) -> std::rc::Rc<[Rect]> {
     let (direction, constraints) = if area.width >= 85 {
         (
             Direction::Horizontal,
-            [Constraint::Percentage(48), Constraint::Percentage(52)],
+            [Constraint::Percentage(62), Constraint::Percentage(38)],
         )
     } else {
         (
@@ -240,20 +240,26 @@ fn render_tools(frame: &mut Frame<'_>, list_area: Rect, detail_area: Rect, app: 
             } else {
                 "×"
             };
-            Row::new([tool.name.as_str(), tool.version.as_str(), state])
+            let latest = match tool_is_latest(tool, &app.snapshot.updates) {
+                Some(value) => yes_no(app, value),
+                None => "—",
+            };
+            Row::new([tool.name.as_str(), tool.version.as_str(), latest, state])
         });
     let table = Table::new(
         rows,
         [
             Constraint::Percentage(38),
-            Constraint::Percentage(48),
-            Constraint::Percentage(14),
+            Constraint::Percentage(38),
+            Constraint::Percentage(16),
+            Constraint::Percentage(8),
         ],
     )
     .header(
         Row::new([
             app.locale.text("Tool", "工具"),
             app.locale.text("Version", "版本"),
+            app.locale.text("Latest", "最新"),
             "",
         ])
         .style(accent()),
@@ -291,6 +297,13 @@ fn render_tools(frame: &mut Frame<'_>, list_area: Rect, detail_area: Rect, app: 
                 field(
                     app.locale.text("Active", "已启用"),
                     yes_no(app, tool.active),
+                ),
+                field(
+                    app.locale.text("Latest", "最新"),
+                    match tool_is_latest(tool, &app.snapshot.updates) {
+                        Some(value) => yes_no(app, value),
+                        None => "—",
+                    },
                 ),
                 field(
                     app.locale.text("Source", "来源"),
@@ -705,8 +718,8 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
             Span::raw(format!(
                 "{}{filter}",
                 app.locale.text(
-                    "  Tab panels  h/j/k/l move  m actions  / search  a add  o settings  ? help",
-                    "  Tab 切换面板  h/j/k/l 移动  m 操作  / 搜索  a 添加  o 设置  ? 帮助",
+                    "  Tab panels  h/j/k/l move  m actions  / search  a registry  A backend  ? help",
+                    "  Tab 切换面板  h/j/k/l 移动  m 操作  / 搜索  a 注册表  A 后端  ? 帮助",
                 )
             )),
         ])),
@@ -715,10 +728,6 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
 }
 
 fn render_overlay(frame: &mut Frame<'_>, app: &App) {
-    if app.loading {
-        render_loading(frame, app);
-        return;
-    }
     match &app.overlay {
         Overlay::None => {}
         Overlay::Help => render_help(frame, app),
@@ -736,6 +745,7 @@ fn render_overlay(frame: &mut Frame<'_>, app: &App) {
             arguments,
             help,
         } => render_command_builder(frame, app, spec, arguments, help),
+        Overlay::CustomTool { input } => render_custom_tool(frame, app, input),
         Overlay::ConfirmDelete { tool, version } => {
             let area = centered_rect(55, 7, frame.area());
             frame.render_widget(Clear, area);
@@ -916,49 +926,6 @@ fn command_ui_matches(command: &crate::mise::CommandSpec, query: &str) -> bool {
     picker_match(&command.name, &command.description, query)
 }
 
-fn render_loading(frame: &mut Frame<'_>, app: &App) {
-    const SPINNER: [&str; 8] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
-    let area = centered_rect(62, 8, frame.area());
-    frame.render_widget(Clear, area);
-    frame.render_widget(
-        Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled(
-                    format!("{} ", SPINNER[app.loading_tick % SPINNER.len()]),
-                    accent().add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    app.locale
-                        .text("Loading mise environment", "正在加载 mise 环境"),
-                    Style::default().add_modifier(Modifier::BOLD),
-                ),
-            ]),
-            Line::from(""),
-            Line::from(app.locale.text(
-                "Reading tools, remote status, tasks, and active configs.",
-                "正在读取工具、远程状态、任务和活动配置。",
-            )),
-            Line::from(Span::styled(
-                app.locale.text(
-                    "`mise outdated` may contact remote registries.",
-                    "`mise outdated` 可能会连接远程注册表。",
-                ),
-                muted(),
-            )),
-            Line::from(""),
-            Line::from(Span::styled(
-                app.locale.text("Press q to cancel", "按 q 取消"),
-                muted(),
-            )),
-        ])
-        .block(modal_block(
-            app.locale
-                .text(" Starting lazymise ", " 正在启动 lazymise "),
-        )),
-        area,
-    );
-}
-
 fn render_search(frame: &mut Frame<'_>, app: &App, query: &str) {
     let area = centered_rect(60, 5, frame.area());
     frame.render_widget(Clear, area);
@@ -972,6 +939,44 @@ fn render_search(frame: &mut Frame<'_>, app: &App, query: &str) {
             " Filter current view · Enter apply · Esc clear ",
             " 筛选当前视图 · Enter 应用 · Esc 清除 ",
         ))),
+        area,
+    );
+}
+
+fn render_custom_tool(frame: &mut Frame<'_>, app: &App, input: &str) {
+    let area = centered_rect(76, 10, frame.area());
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(app.locale.text(
+                "Enter a mise backend tool spec, then choose a version.",
+                "输入 mise 后端工具标识，然后选择版本。",
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("> ", accent().add_modifier(Modifier::BOLD)),
+                Span::raw(input),
+                Span::styled("█", accent()),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(
+                app.locale.text(
+                    "Examples: github:jorgerojas26/lazysql · npm:prettier · cargo:ripgrep",
+                    "示例：github:jorgerojas26/lazysql · npm:prettier · cargo:ripgrep",
+                ),
+                muted(),
+            )),
+            Line::from(Span::styled(
+                app.locale.text(
+                    "GitHub URLs and owner/repository are accepted · Enter continue · Esc cancel",
+                    "支持 GitHub URL 和 owner/repository · Enter 继续 · Esc 取消",
+                ),
+                muted(),
+            )),
+        ])
+        .block(modal_block(
+            app.locale.text(" Custom backend tool ", " 自定义后端工具 "),
+        )),
         area,
     );
 }
@@ -992,10 +997,30 @@ fn render_picker(frame: &mut Frame<'_>, app: &App, picker: &Picker) {
         area,
     );
 
-    let search = if picker.searching() { "█" } else { "" };
+    let (visible_count, total_count) = match picker {
+        Picker::Registry { items, .. } => (picker.visible_len(), items.len()),
+        Picker::Versions { items, .. } => (picker.visible_len(), items.len()),
+    };
+    let search_label = app.locale.text("Filter", "筛选");
+    let placeholder = app.locale.text("press / to type", "按 / 开始输入");
+    let mut search_line = vec![Span::styled(
+        format!(" {search_label}: "),
+        Style::default().add_modifier(Modifier::BOLD),
+    )];
+    if picker.query().is_empty() && !picker.searching() {
+        search_line.push(Span::styled(placeholder, muted()));
+    } else {
+        search_line.push(Span::styled(picker.query(), accent()));
+        if picker.searching() {
+            search_line.push(Span::styled("█", accent()));
+        }
+    }
+    search_line.push(Span::styled(
+        format!("  {visible_count}/{total_count}"),
+        muted(),
+    ));
     frame.render_widget(
-        Paragraph::new(format!(" /{}{}", picker.query(), search))
-            .block(Block::default().borders(Borders::BOTTOM)),
+        Paragraph::new(Line::from(search_line)).block(Block::default().borders(Borders::BOTTOM)),
         sections[0],
     );
 
@@ -1006,40 +1031,84 @@ fn render_picker(frame: &mut Frame<'_>, app: &App, picker: &Picker) {
             query,
             ..
         } => {
-            let rows = items
+            let visible_items = items
                 .iter()
-                .filter(|item| picker_match(&item.name, &item.description, query))
-                .map(|item| {
-                    Row::new([
-                        item.name.as_str(),
-                        item.description.as_str(),
-                        item.backends.first().map(String::as_str).unwrap_or(""),
+                .filter(|item| registry_matches(item, query))
+                .collect::<Vec<_>>();
+            if visible_items.is_empty() {
+                let direct_tool = custom_backend_query(query);
+                let lines = if let Some(tool) = direct_tool {
+                    vec![
+                        Line::from(Span::styled(
+                            app.locale.text("No registry match", "注册表中没有匹配项"),
+                            Style::default().add_modifier(Modifier::BOLD),
+                        )),
+                        Line::from(""),
+                        Line::from(vec![
+                            Span::styled(
+                                app.locale.text("Use backend directly: ", "直接使用后端："),
+                                muted(),
+                            ),
+                            Span::styled(tool, accent()),
+                        ]),
+                        Line::from(app.locale.text(
+                            "Press Enter to load its versions.",
+                            "按 Enter 查询该工具的版本。",
+                        )),
+                    ]
+                } else {
+                    vec![
+                        Line::from(Span::styled(
+                            app.locale.text("No matching tools", "没有匹配的工具"),
+                            Style::default().add_modifier(Modifier::BOLD),
+                        )),
+                        Line::from(""),
+                        Line::from(app.locale.text(
+                            "Try a tool name, description, backend, or github:owner/repository.",
+                            "可搜索工具名、描述、后端，或输入 github:owner/repository。",
+                        )),
+                    ]
+                };
+                frame.render_widget(
+                    Paragraph::new(lines)
+                        .style(muted())
+                        .block(Block::default().borders(Borders::NONE)),
+                    sections[1],
+                );
+            } else {
+                let content_width = usize::from(sections[1].width.saturating_sub(4));
+                let name_width = (content_width / 3).clamp(16, 30);
+                let backend_width = content_width.saturating_sub(name_width + 1);
+                let list_items = visible_items.into_iter().map(|item| {
+                    let name = truncate_text(&item.name, name_width);
+                    let backend = item.backends.first().map(String::as_str).unwrap_or("—");
+                    let backend = if item.backends.len() > 1 {
+                        format!("{backend} +{}", item.backends.len() - 1)
+                    } else {
+                        backend.to_owned()
+                    };
+                    let backend = truncate_text(&backend, backend_width);
+                    let description = truncate_text(&item.description, content_width);
+                    ListItem::new(vec![
+                        Line::from(vec![
+                            Span::styled(
+                                format!("{name:<name_width$}"),
+                                Style::default().add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(backend, accent()),
+                        ]),
+                        Line::from(Span::styled(description, muted())),
                     ])
                 });
-            let table = Table::new(
-                rows,
-                [
-                    Constraint::Percentage(24),
-                    Constraint::Percentage(52),
-                    Constraint::Percentage(24),
-                ],
-            )
-            .header(
-                Row::new([
-                    app.locale.text("Tool", "工具"),
-                    app.locale.text("Description", "描述"),
-                    app.locale.text("Backend", "后端"),
-                ])
-                .style(accent()),
-            )
-            .row_highlight_style(selected_style(true))
-            .highlight_symbol("▸ ");
-            let mut state = TableState::default().with_offset(centered_offset(
-                *selected,
-                sections[1].height.saturating_sub(1),
-            ));
-            state.select((picker.visible_len() > 0).then_some(*selected));
-            frame.render_stateful_widget(table, sections[1], &mut state);
+                let list = List::new(list_items)
+                    .highlight_style(selected_style(true))
+                    .highlight_symbol("▸ ");
+                let viewport_items = usize::from(sections[1].height.max(2) / 2);
+                let mut state = ListState::default()
+                    .with_offset(centered_offset(*selected, viewport_items as u16));
+                state.select(Some(*selected));
+                frame.render_stateful_widget(list, sections[1], &mut state);
+            }
         }
         Picker::Versions {
             tool,
@@ -1096,13 +1165,17 @@ fn render_picker(frame: &mut Frame<'_>, app: &App, picker: &Picker) {
             frame.render_stateful_widget(table, sections[1], &mut state);
         }
     }
-    frame.render_widget(
-        Paragraph::new(app.locale.text(
+    let footer = match picker {
+        Picker::Registry { .. } => app.locale.text(
+            " j/k navigate · / filter · Enter choose/direct backend · c custom · Esc cancel ",
+            " j/k 导航 · / 筛选 · Enter 选择/直达后端 · c 自定义 · Esc 取消 ",
+        ),
+        Picker::Versions { .. } => app.locale.text(
             " j/k navigate · / filter · Enter choose · Esc cancel ",
             " j/k 导航 · / 筛选 · Enter 选择 · Esc 取消 ",
-        )),
-        sections[2],
-    );
+        ),
+    };
+    frame.render_widget(Paragraph::new(footer), sections[2]);
 }
 
 fn render_help(frame: &mut Frame<'_>, app: &App) {
@@ -1124,6 +1197,7 @@ fn render_help(frame: &mut Frame<'_>, app: &App) {
             Line::from(""),
             heading("工具管理"),
             Line::from("  a              注册表 → 版本 → 添加到作用域"),
+            Line::from("  A / 注册表内 c 自定义后端 → 版本 → 添加到作用域"),
             Line::from("  v              远程版本 → 在作用域中启用"),
             Line::from("  i              远程版本 → 仅安装"),
             Line::from("  d              确认并卸载所选版本"),
@@ -1156,6 +1230,7 @@ fn render_help(frame: &mut Frame<'_>, app: &App) {
             Line::from(""),
             heading("Tool management"),
             Line::from("  a              registry → version → add to scope"),
+            Line::from("  A / c in picker custom backend → version → add to scope"),
             Line::from("  v              remote versions → activate in scope"),
             Line::from("  i              remote versions → install only"),
             Line::from("  d              confirm and uninstall selected version"),
@@ -1180,6 +1255,17 @@ fn render_help(frame: &mut Frame<'_>, app: &App) {
 }
 fn centered_offset(selected: usize, viewport_height: u16) -> usize {
     selected.saturating_sub(usize::from(viewport_height.max(1)) / 2)
+}
+fn truncate_text(value: &str, max_width: usize) -> String {
+    if value.chars().count() <= max_width {
+        return value.to_owned();
+    }
+    if max_width <= 1 {
+        return "…".chars().take(max_width).collect();
+    }
+    let mut output = value.chars().take(max_width - 1).collect::<String>();
+    output.push('…');
+    output
 }
 
 fn picker_match(primary: &str, secondary: &str, query: &str) -> bool {
@@ -1268,6 +1354,14 @@ fn metric(label: &str, value: usize) -> Line<'_> {
     ])
 }
 
+fn tool_is_latest(tool: &crate::mise::Tool, updates: &[crate::mise::Update]) -> Option<bool> {
+    (tool.installed && tool.active).then(|| {
+        !updates
+            .iter()
+            .any(|update| update.name == tool.name && update.current == tool.version)
+    })
+}
+
 fn yes_no(app: &App, value: bool) -> &'static str {
     if value {
         app.locale.text("yes", "是")
@@ -1293,5 +1387,37 @@ mod tests {
     #[test]
     fn initial_rows_do_not_scroll_above_zero() {
         assert_eq!(centered_offset(3, 10), 0);
+    }
+
+    #[test]
+    fn long_picker_text_is_truncated_without_exceeding_width() {
+        assert_eq!(
+            truncate_text("github:owner/long-project", 12),
+            "github:owne…"
+        );
+        assert_eq!(truncate_text("short", 12), "short");
+        assert_eq!(truncate_text("long", 1), "…");
+    }
+
+    #[test]
+    fn latest_status_only_applies_to_active_installed_tools() {
+        let mut tool = crate::mise::Tool {
+            name: "node".into(),
+            version: "24.0.0".into(),
+            requested: "24".into(),
+            source: None,
+            installed: true,
+            active: true,
+        };
+        let updates = vec![crate::mise::Update {
+            name: "node".into(),
+            current: "24.0.0".into(),
+            latest: "25.0.0".into(),
+        }];
+
+        assert_eq!(tool_is_latest(&tool, &updates), Some(false));
+        assert_eq!(tool_is_latest(&tool, &[]), Some(true));
+        tool.active = false;
+        assert_eq!(tool_is_latest(&tool, &updates), None);
     }
 }
