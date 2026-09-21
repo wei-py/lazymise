@@ -1,18 +1,18 @@
 # lazymise 操作手册
 
-`lazymise` 是基于 Rust、Ratatui 和 Crossterm 的 mise TUI。界面负责发现、选择和确认；实际的安装、切换、卸载、升级和任务执行仍由本机 `mise` CLI 完成。
+`lazymise` 是基于 Bun 和 @opentui/core 的 mise TUI。界面负责发现、选择和确认；实际的安装、切换、卸载、升级和任务执行仍由本机 `mise` CLI 完成。
 
 ## 安装与启动
 
 ```bash
-cargo install --path .
-lazymise
+bun install
+bun src/main.js
 ```
 
-开发模式：
+或通过 mise task：
 
 ```bash
-cargo run
+mise run dev
 ```
 
 请在目标项目目录中运行。`lazymise` 会读取当前目录生效的全局与项目级 mise 配置。
@@ -29,22 +29,24 @@ cargo run
 │   Tools       │ [x] python 3.13 → 3.14 │ Latest        25            │
 │   Updates     │                        │ Selected      yes           │
 │   Tasks       │                        │                             │
-│   Environment │                        │ Enter open action           │
-│   Config      │                        │ m related actions           │
+│   Console     │                        │ Enter open action           │
+│   Environment │                        │ m related actions           │
+│   Config      │                        │                             │
 │   System      │                        │                             │
 │   Preferences │                        │                             │
-│   Command Log │                        │                             │
+│   Logs        │                        │                             │
 ├───────────────┴────────────────────────┴─────────────────────────────┤
-│ Ready  m 页面操作  E 环境  o 设置  : 专家入口  ? 帮助              │
+│ [1 running] Ready  m page actions  : expert  ? help  q quit          │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 - 左侧：功能分区和当前环境摘要。
-- 中间：工具、版本、更新、任务、配置或命令列表。
+- 中间：工具、版本、更新、任务、后台任务、配置或命令列表。
 - 右侧：选中项详情。
 - 青色边框：当前获得键盘焦点的面板。
 - 窗口较窄时，列表和详情自动变为上下布局。
 - 顶部 `[PROJECT]` / `[GLOBAL]` 表示新增或切换版本时写入哪个作用域。
+- 状态栏左侧 `[N running]` 表示后台运行中的任务数。
 
 ## 完整快捷键
 
@@ -52,18 +54,16 @@ cargo run
 
 | 按键                | 操作                                  |
 | ------------------- | ------------------------------------- |
-| `h` / `←` / `Esc`   | 向左移动焦点；`Esc` 直接返回 Sections |
+| `h` / `←`           | 向左移动焦点                          |
 | `l` / `→` / `Enter` | 向右移动焦点                          |
 | `j` / `↓`           | 下一个分区、下一行，或向下滚动详情    |
 | `k` / `↑`           | 上一个分区、上一行，或向上滚动详情    |
-| `Tab`               | 按 Sections → List → Details 循环切换 |
-| `Shift-Tab`         | 按 Details → List → Sections 反向循环 |
-| `Ctrl-d`            | 向下移动或滚动 5 行                   |
-| `Ctrl-u`            | 向上移动或滚动 5 行                   |
-| `Home` / `End`      | 在列表中跳到第一行 / 最后一行         |
+| `Tab`               | 按 Navigation → List → Detail 循环切换 |
+| `Shift-Tab`         | 按 Detail → List → Navigation 反向循环 |
+| `Esc`               | 返回 Navigation 焦点                   |
 | `[` / `]`           | 上一个 / 下一个分区                   |
 
-界面有三个可聚焦面板：Sections、List、Details。青色边框明确表示当前焦点。焦点在 Sections 时 `j/k` 切换分区；在 List 时切换列表项；在 Details 时滚动详细内容。
+界面有三个可聚焦面板：Navigation、List、Detail。青色边框明确表示当前焦点。焦点在 Navigation 时 `j/k` 切换分区；在 List 时切换列表项；在 Detail 时滚动详细内容。
 
 ### 页面跳转
 
@@ -73,11 +73,12 @@ cargo run
 | `2`       | Tools              |
 | `3` / `u` | Updates            |
 | `4` / `t` | Tasks              |
+| `b`       | Console（后台任务） |
 | `5` / `E` | Environment        |
 | `6` / `c` | Config             |
 | `7` / `s` | System             |
 | `8` / `o` | Preferences / 设置 |
-| `x`       | Command Log        |
+| `x`       | Logs（命令日志）    |
 
 ### 界面语言
 
@@ -108,10 +109,10 @@ cargo run
 | `q`           | 取消整个选择流程                                                   |
 | `Space`       | 在 Updates 页面选中或取消选中更新项                                |
 
-搜索覆盖 Tools、Updates、Tasks、Environment、Config、System 和 Command Log。添加工具始终从同一个 registry 选择器开始；来源筛选由 `mise registry --json` 返回的数据动态生成，`All` 位于首位，常见的 npm、GitHub、Go、Cargo 筛选优先显示，同时 Aqua、asdf、vfox、pipx 和所有其他来源前缀仍可通过 `Tab` / `Shift-Tab` 到达。工具名、描述、完整后端标识和多个关键词搜索会与当前来源筛选按 AND 语义组合。来源选择器按完整后端标识筛选，版本选择器按版本号筛选。
+搜索覆盖 Tools、Updates、Tasks、Console、Environment、Config、System 和 Logs。添加工具始终从同一个 registry 选择器开始；来源筛选由 `mise registry --json` 返回的数据动态生成，`All` 位于首位，常见的 npm、GitHub、Go、Cargo 筛选优先显示，同时 Aqua、asdf、vfox、pipx 和所有其他来源前缀仍可通过 `Tab` / `Shift-Tab` 到达。工具名、描述、完整后端标识和多个关键词搜索会与当前来源筛选按 AND 语义组合。来源选择器按完整后端标识筛选，版本选择器按版本号筛选。
 
 ### 工具管理
-工具列表的“最新”列仅评估已安装且当前启用的版本：`是` 表示 `mise outdated` 未报告更新，`否` 表示存在更新，`—` 表示该版本未启用或尚未安装。
+工具列表的"最新"列仅评估已安装且当前启用的版本：`是` 表示 `mise outdated` 未报告更新，`否` 表示存在更新，`—` 表示该版本未启用或尚未安装。
 
 | 按键 | 生效位置   | 操作                                                                 |
 | ---- | ---------- | -------------------------------------------------------------------- |
@@ -122,6 +123,8 @@ cargo run
 | `d`  | Tools      | 请求确认后卸载选中的已安装版本                               |
 | `p`  | 主页面或选择器 | 将写入作用域设为 Project；筛选输入状态下仍输入文字             |
 | `G`  | 主页面或选择器 | 将写入作用域设为 Global；筛选输入状态下仍输入文字              |
+
+install、use、upgrade、uninstall 操作在后台静默执行，不阻塞 UI。可在 Console 页面（按 `b`）查看任务进度。
 
 不在 mise registry 中的工具也可以添加。例如 LazySQL：
 
@@ -142,6 +145,22 @@ i                  → mise install --yes TOOL@VERSION
 d                  → mise uninstall --yes TOOL@VERSION
 ```
 
+### 后台任务与 Console 页面
+
+所有 install、use、uninstall、upgrade 操作在后台执行，不阻塞 UI：
+
+1. 执行操作后，状态栏显示 `[N running]` 表示 N 个后台任务。
+2. 按 `b` 进入 Console 页面查看所有任务。
+3. 每个任务显示状态图标：
+   - ⏳ `pending` — 等待执行
+   - 🔄 `running` — 执行中
+   - ✓ `done` — 已完成
+   - ✗ `failed` — 失败
+4. 选中任务可查看命令、耗时和完整输出。
+5. 按 `d` 清除已完成/失败的任务（pending 和 running 任务保留）。
+
+任务完成后结果同时写入 Logs（命令日志），可在 Logs 页面（按 `x`）查看历史记录。Console 和 Logs 各保留最近 100 条。
+
 ### 更新、任务和配置
 
 | 按键           | 操作                                      |
@@ -149,7 +168,8 @@ d                  → mise uninstall --yes TOOL@VERSION
 | `Space`        | 选中或取消选中当前更新                    |
 | `U`            | 升级已选工具；未选择时升级全部过期工具    |
 | `Enter`        | 在 Tasks 页面执行选中的 `mise run <task>` |
-| `e`            | 在 Config 页面打开选中的配置文件          |
+| `e`            | 在 Config 页面用编辑器打开选中的配置文件  |
+| `y`            | 在 Config 页面复制选中配置文件到剪贴板    |
 | `r`            | 重新读取工具、更新、任务和配置状态        |
 | `?`            | 打开完整内置帮助                          |
 | `q` / `Ctrl-c` | 退出；在弹窗内 `q` 通常关闭弹窗           |
@@ -164,11 +184,12 @@ d                  → mise uninstall --yes TOOL@VERSION
 | Tools              | 工具列表、版本发现、`install`、`use`、`uninstall`、`registry`、`plugins`、`backends`、`sync` 等   |
 | Updates            | `outdated`、多选 `upgrade`、`prune`                                                               |
 | Tasks              | 任务列表、`run`、`watch`、`tasks`、`deps`                                                         |
+| Console            | 后台任务队列，查看 install/use/upgrade/uninstall 实时状态和输出                                     |
 | Environment        | `activate`、`deactivate`、`env`、`en`、`exec`、`shell`、`shell-alias`、`bin-paths`、`which`       |
-| Config             | 配置列表与编辑、`config`、`fmt`、`lock`、`set`、`unset`、`settings`、`trust`、`untrust`           |
+| Config             | 配置列表、编辑（`e`）、复制到剪贴板（`y`）、`config`、`fmt`、`lock`、`set`、`unset`、`settings`、`trust`、`untrust` |
 | System             | `doctor`、`bootstrap`、`cache`、`completion`、`generate`、`mcp`、`oci`、`self-update`、`token` 等 |
 | Preferences / 设置 | 切换并持久化 lazymise 界面语言；当前支持中文和英文                                                |
-| Command Log        | 最近命令、状态和输出                                                                              |
+| Logs               | 最近命令、状态和输出                                                                              |
 
 ### 页面内相关操作
 
@@ -270,7 +291,7 @@ eval "$(mise activate zsh)"
 6. 候选很多时按 `/` 输入主版本，例如 `24.`，只显示匹配版本。
 7. `Enter` 选择；`Esc` 取消。
 
-`v` 表示“安装并写入当前 scope”；`i` 表示“仅安装”。两者不会混淆。
+`v` 表示"安装并写入当前 scope"；`i` 表示"仅安装"。两者不会混淆。
 
 ### 添加当前没有的工具
 
@@ -290,23 +311,11 @@ eval "$(mise activate zsh)"
 
 ### Project
 
-按：
-
-```text
-p
-```
-
-顶部及会写配置的选择器显示 `[PROJECT]` / `PROJECT`。在主页面或选择器中按 `p`，`a` 和 `v` 将写入当前项目的 `mise.toml`。
+按 `p`，顶部及会写配置的选择器显示 `[PROJECT]` / `PROJECT`。`a` 和 `v` 将写入当前项目的 `mise.toml`。
 
 ### Global
 
-按：
-
-```text
-G
-```
-
-顶部及会写配置的选择器显示 `[GLOBAL]` / `GLOBAL`。在主页面或选择器中按 `G`，`a` 和 `v` 使用 `mise use --global` 写入全局配置。自定义后端输入框使用 `Tab` 切换作用域。
+按 `G`，顶部及会写配置的选择器显示 `[GLOBAL]` / `GLOBAL`。`a` 和 `v` 使用 `mise use --global` 写入全局配置。自定义后端输入框使用 `Tab` 切换作用域。
 
 `i` 只安装版本，不写配置，因此不受 scope 影响。`d` 删除具体安装版本，也不修改 `mise.toml`。
 
@@ -359,7 +368,7 @@ eval "$(mise activate zsh)"
 1. 按 `u` 进入 Updates。
 2. 使用 `j/k` 移动。
 3. 用 `Space` 选择多个更新，选中项显示 `[x]`。
-4. 按大写 `U` 升级选中工具。
+4. 按大写 `U` 升级选中工具（后台执行，不阻塞 UI）。
 5. 如果一个都没有选择，`U` 升级全部过期工具。
 
 小写 `u` 只跳转页面；大写 `U` 才执行升级，避免误操作。
@@ -371,18 +380,28 @@ eval "$(mise activate zsh)"
 3. 确认窗口显示准确的 `tool@version`。
 4. `Enter` / `y` 确认；`n` / `Esc` 取消。
 
-卸载只执行 `mise uninstall`，不会偷偷修改 mise 配置。若配置仍引用该版本，刷新后会显示为缺失，应使用 `v` 切换到其他版本或手动修改配置。
+卸载只执行 `mise uninstall`，不会偷偷修改 mise 配置。若配置仍引用该版本，刷新后会显示为缺失，应使用 `v` 切换到其他版本或手动修改配置。卸载操作在后台执行，可在 Console 页面查看进度。
 
-## Command Log
+## 复制配置文件
+
+Config 页面选中一个 mise.toml 后按 `y`，将文件内容复制到系统剪贴板：
+
+- macOS：使用 `pbcopy`
+- Linux：使用 `wl-copy`
+- Windows：使用 `clip`
+
+复制成功后在状态栏显示确认消息。如果剪贴板工具不可用，显示错误提示。
+
+## Logs
 
 按 `x` 打开命令日志。每条记录包含：
 
 - 实际执行的命令；
 - 成功或失败状态；
 - mise 的 stdout 和 stderr；
-- 编辑器与交互任务的完成状态。
+- 后台任务完成后自动写入。
 
-命令失败后状态栏会提示按 `x` 查看输出。日志最多保留当前会话最近 100 条，避免无限增长。
+命令失败后状态栏会提示查看输出。日志最多保留 100 条，避免无限增长。
 
 ## 配置编辑器
 
@@ -405,6 +424,7 @@ export VISUAL="nvim"
 - `U` 只升级 Space 选中的工具；无选择时才升级全部。
 - Project / Global 始终显示在顶部，写入前可明确检查。
 - `i` 不激活版本；`v` 和 `a` 才会写配置。
+- install、use、upgrade、uninstall 在后台执行，不阻塞 UI。
 - lazymise 不重新实现 mise，不直接操作 mise 的安装目录。
 
 ## 故障处理
@@ -427,4 +447,4 @@ mise ls-remote node --json
 mise tasks --json
 ```
 
-如果命令失败，在 lazymise 中按 `x` 查看完整输出。终端显示异常时，请使用支持 UTF-8 的终端并检查 `$TERM`。
+如果命令失败，在 lazymise 中按 `b` 进入 Console 页面或按 `x` 进入 Logs 页面查看完整输出。终端显示异常时，请使用支持 UTF-8 的终端并检查 `$TERM`。
