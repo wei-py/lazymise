@@ -1,25 +1,11 @@
-[tools]
-rust = { version = "1.94.0", profile = "minimal", components = [
-  "clippy",
-  "rustfmt",
-] }
-
-[tasks.fmt]
-description = "Check Rust formatting"
-run = "cargo fmt --check"
-
-[tasks.clippy]
-description = "Lint all Rust targets"
-run = "cargo clippy --all-targets -- -D warnings"
-
-[tasks.test]
-description = "Run the Rust test suite"
-run = "cargo test --locked"
-
-[tasks.check]
-description = "Run all Rust checks"
-depends = ["fmt", "clippy", "test"]
+[tasks.lint]
+description = "Lint all JS sources"
+run = "bun run lint"
 
 [tasks.dev]
 description = "Run lazymise from source"
-run = "cargo run"
+run = "bun src/main.js"
+
+[tasks.check]
+description = "Run all checks"
+depends = ["lint"]
