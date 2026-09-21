@@ -3,13 +3,26 @@ import { readFileSync } from 'node:fs'
 import { t } from '../config/i18n.js'
 import { loadSettings, saveSettings } from '../config/settings.js'
 import {
-  commandBelongsToPage, commandCatalog, commandHelp, execute, isInteractive,
-  loadSnapshot, needsConfirmation, registry, remoteVersions,
-  DASHBOARD_COMMANDS
+  commandBelongsToPage,
+  commandCatalog,
+  commandHelp,
+  DASHBOARD_COMMANDS,
+  execute,
+  isInteractive,
+  loadSnapshot,
+  needsConfirmation,
+  registry,
+  remoteVersions,
 } from '../mise.js'
 import {
-  containsCaseInsensitive, FOCUS, focusSeq, moveIndex, PAGE, PAGE_ORDER,
-  SCOPE, VERSION_INTENT
+  containsCaseInsensitive,
+  FOCUS,
+  focusSeq,
+  moveIndex,
+  PAGE,
+  PAGE_ORDER,
+  SCOPE,
+  VERSION_INTENT,
 } from './state.js'
 
 export class Application {
@@ -31,7 +44,7 @@ export class Application {
         tools: [],
         updates: [],
         tasks: [],
-        configs: []
+        configs: [],
       },
       selected: 0,
       detailScroll: 0,
@@ -44,7 +57,7 @@ export class Application {
       loading: true,
       width: 100,
       height: 24,
-      consoleTasks: []
+      consoleTasks: [],
     }
   }
 
@@ -61,7 +74,8 @@ export class Application {
     await this.refresh()
     try {
       this.state.commands = await commandCatalog()
-    } catch {
+    }
+    catch {
       this.state.commands = []
     }
     this.state.loading = false
@@ -72,7 +86,8 @@ export class Application {
     try {
       this.state.snapshot = await loadSnapshot()
       this.state.status = ''
-    } catch (err) {
+    }
+    catch {
       this.state.status = t(this.state.language, 'error_load_failed')
     }
     this.clampSelection()
@@ -82,7 +97,8 @@ export class Application {
   // ---- key dispatch ----
 
   handleKey(key) {
-    if (this.#dying) return
+    if (this.#dying)
+      return
 
     // overlay active? delegate
     if (this.state.overlay) {
@@ -143,7 +159,8 @@ export class Application {
       case 'k':
       case 'up': this.moveVertical(-1); return
       case 'tab':
-        if (shift) this.cycleFocus(-1)
+        if (shift)
+          this.cycleFocus(-1)
         else this.cycleFocus(1)
         return
       case 'home': this.#goTop(); return
@@ -162,7 +179,7 @@ export class Application {
     }
 
     // page-specific
-    this.#handlePageKey(name, ctrl, shift)
+    this.#handlePageKey(name, _ctrl, _shift)
 
     // printable text in navigation/search context
     if (text && text.length === 1 && !ctrl && !shift && name !== 'escape') {
@@ -175,7 +192,7 @@ export class Application {
     }
   }
 
-  #handlePageKey(name, ctrl, shift) {
+  #handlePageKey(name, _ctrl, _shift) {
     const { page } = this.state
     switch (page) {
       case PAGE.Tools:
@@ -183,41 +200,41 @@ export class Application {
           case 'v': void this.useSelectedVersion(); return
           case 'i': void this.installSelectedVersion(); return
           case 'd': void this.deleteSelectedTool(); return
-          case 'enter': void this.runPageCommand(); return
+          case 'enter': void this.runPageCommand()
         }
         break
       case PAGE.Updates:
         switch (name) {
           case 'space': this.toggleSelectedUpdate(); return
-          case 'U': void this.upgradeSelected(); return
+          case 'U': void this.upgradeSelected()
         }
         break
       case PAGE.Tasks: {
         const task = this.selectedTask()
-        if (name === 'enter' && task) { void this.runSelectedTask(); return }
+        if (name === 'enter' && task) { void this.runSelectedTask() }
         break
       }
       case PAGE.Environment:
       case PAGE.System:
-        if (name === 'enter') { void this.runPageCommand(); return }
+        if (name === 'enter') { void this.runPageCommand() }
         break
       case PAGE.Console:
-        if (name === 'd') { this.#dismissConsoleTasks(); return }
+        if (name === 'd') { this.#dismissConsoleTasks() }
         break
       case PAGE.Config:
         if (name === 'e') { void this.openConfig(); return }
-        if (name === 'y') { void this.#copySelectedConfig(); return }
+        if (name === 'y') { void this.#copySelectedConfig() }
         break
       case PAGE.Preferences:
-        if (name === 'enter') { void this.toggleLanguage(); return }
+        if (name === 'enter') { void this.toggleLanguage() }
         break
       case PAGE.Logs: {
         const log = this.selectedLog()
-        if (name === 'enter' && log) { return }
+        if (name === 'enter' && log) { void log }
         break
       }
       case PAGE.Dashboard:
-        if (name === 'enter') { void this.runPageCommand(); return }
+        if (name === 'enter') { void this.runPageCommand() }
         break
     }
   }
@@ -231,16 +248,17 @@ export class Application {
 
   handleOverlayKey(key) {
     const ov = this.state.overlay
-    if (!ov) return
+    if (!ov)
+      return
     switch (ov.type) {
       case 'Search': this.handleSearchKey(key); return
-      case 'Help': this.#handleHelpKey(key); return
+      case 'Help': this.#handleHelpKey(_key); return
       case 'Picker': this.handlePickerKey(key); return
       case 'CommandPalette': this.handleCommandPaletteKey(key); return
       case 'CommandBuilder': this.handleCommandBuilderKey(key); return
       case 'CustomTool': this.handleCustomToolKey(key); return
       case 'ConfirmDelete':
-      case 'ConfirmCommand': this.handleConfirmKey(key); return
+      case 'ConfirmCommand': this.handleConfirmKey(key)
     }
   }
 
@@ -285,7 +303,7 @@ export class Application {
     }
   }
 
-  #handleHelpKey(key) {
+  #handleHelpKey(_key) {
     // any key closes help
     this.#closeOverlay()
     this.update()
@@ -312,10 +330,11 @@ export class Application {
         filterIdx: 0,
         selected: 0,
         search: '',
-        intent: VERSION_INTENT.Use
+        intent: VERSION_INTENT.Use,
       }
       this.state.status = ''
-    } catch (err) {
+    }
+    catch {
       this.state.status = t(this.state.language, 'error_load_failed')
     }
     this.update()
@@ -324,7 +343,8 @@ export class Application {
   async #openBackends() {
     const ov = this.state.overlay
     const tool = ov.tools[ov.selected]
-    if (!tool) return
+    if (!tool)
+      return
     if (!tool.backends || tool.backends.length === 0) {
       // no backends — go straight to versions
       await this.#openVersions(tool.name)
@@ -332,7 +352,7 @@ export class Application {
     }
     if (tool.backends.length === 1) {
       // single backend — use it and go to versions
-      const fullName = tool.backends[0] + ':' + tool.name
+      const fullName = `${tool.backends[0]}:${tool.name}`
       await this.#openVersions(fullName)
       return
     }
@@ -354,7 +374,8 @@ export class Application {
     try {
       ov.versions = await remoteVersions(toolName)
       ov.statusText = ''
-    } catch {
+    }
+    catch {
       ov.statusText = t(this.state.language, 'error_load_failed')
       ov.versions = []
     }
@@ -380,7 +401,8 @@ export class Application {
         case '/':
           // toggle search mode inside picker
           ov.searching = !ov.searching
-          if (!ov.searching) ov.search = ''
+          if (!ov.searching)
+            ov.search = ''
           this.update()
           return
         case 'escape':
@@ -389,7 +411,8 @@ export class Application {
           return
         case 'enter': {
           const filtered = this.#pickerFiltered(ov)
-          if (filtered.length === 0) return
+          if (filtered.length === 0)
+            return
           ov.selectedTool = filtered[ov.selected]
           void this.#openBackends()
           return
@@ -430,13 +453,15 @@ export class Application {
         case 'escape':
           ov.level = 'registry'
           ov.selected = ov.tools.indexOf(ov.selectedTool)
-          if (ov.selected < 0) ov.selected = 0
+          if (ov.selected < 0)
+            ov.selected = 0
           this.update()
           return
         case 'enter': {
           const backend = list[ov.backendSelected]
-          if (!backend) return
-          const fullName = backend + ':' + ov.selectedTool.name
+          if (!backend)
+            return
+          const fullName = `${backend}:${ov.selectedTool.name}`
           void this.#openVersions(fullName)
           return
         }
@@ -464,20 +489,24 @@ export class Application {
             if (ov.backendList && ov.backendList.length > 1) {
               ov.level = 'backends'
               this.update()
-            } else {
+            }
+            else {
               ov.level = 'registry'
               ov.selected = ov.tools.indexOf(ov.selectedTool)
-              if (ov.selected < 0) ov.selected = 0
+              if (ov.selected < 0)
+                ov.selected = 0
               this.update()
             }
-          } else {
+          }
+          else {
             ov.level = 'registry'
             this.update()
           }
           return
         case 'enter': {
           const version = versions[ov.selected]
-          if (!version) return
+          if (!version)
+            return
           const intent = ov.intent || VERSION_INTENT.Use
           // build tool@version spec
           let toolSpec = version.version
@@ -485,19 +514,22 @@ export class Application {
           if (ov.selectedTool) {
             const st = ov.selectedTool
             if (st.backends && st.backends.length === 1) {
-              toolSpec = st.backends[0] + ':' + st.name + '@' + version.version
-            } else if (st.backends && st.backends.length > 1 && ov.backendList) {
+              toolSpec = `${st.backends[0]}:${st.name}@${version.version}`
+            }
+            else if (st.backends && st.backends.length > 1 && ov.backendList) {
               const backend = ov.backendList[ov.backendSelected] || st.backends[0]
-              toolSpec = backend + ':' + st.name + '@' + version.version
-            } else {
-              toolSpec = st.name + '@' + version.version
+              toolSpec = `${backend}:${st.name}@${version.version}`
+            }
+            else {
+              toolSpec = `${st.name}@${version.version}`
             }
           }
           this.#closeOverlay()
           if (intent === VERSION_INTENT.Use) {
             const scopeFlag = this.state.scope === SCOPE.Global ? ['--global'] : []
             this.executeBackground(['use', '--yes', ...scopeFlag, toolSpec], `use ${toolSpec}`)
-          } else {
+          }
+          else {
             this.executeBackground(['install', '--yes', toolSpec], `install ${toolSpec}`)
           }
           return
@@ -511,20 +543,20 @@ export class Application {
         case 'up':
           ov.selected = moveIndex(ov.selected, -1, versions.length || 1)
           this.update()
-          return
       }
     }
   }
 
   #pickerFiltered(ov) {
-    if (!ov.tools) return []
+    if (!ov.tools)
+      return []
     let filtered = ov.tools
     // filter by search
     if (ov.search) {
       const q = ov.search.toLowerCase()
       filtered = filtered.filter(t =>
-        t.name.toLowerCase().includes(q) ||
-        (t.description && t.description.toLowerCase().includes(q))
+        t.name.toLowerCase().includes(q)
+        || (t.description && t.description.toLowerCase().includes(q)),
       )
     }
     // filter by backend
@@ -543,7 +575,7 @@ export class Application {
       commands: this.state.commands,
       selected: 0,
       search: '',
-      searching: false
+      searching: false,
     }
     this.update()
   }
@@ -551,7 +583,7 @@ export class Application {
   openContextCommands() {
     const page = this.state.page
     const filtered = this.state.commands.filter(c =>
-      commandBelongsToPage(page, c.name) || DASHBOARD_COMMANDS.includes(c.name)
+      commandBelongsToPage(page, c.name) || DASHBOARD_COMMANDS.includes(c.name),
     )
     this.state.overlay = {
       type: 'CommandPalette',
@@ -559,7 +591,7 @@ export class Application {
       selected: 0,
       search: '',
       searching: false,
-      context: true
+      context: true,
     }
     this.update()
   }
@@ -611,7 +643,8 @@ export class Application {
         return
       case 'enter': {
         const cmd = filtered[ov.selected]
-        if (!cmd) return
+        if (!cmd)
+          return
         this.#openCommandBuilder(cmd)
         return
       }
@@ -624,17 +657,18 @@ export class Application {
       case 'up':
         ov.selected = moveIndex(ov.selected, -1, filtered.length || 1)
         this.update()
-        return
     }
   }
 
   #commandFiltered(ov) {
-    if (!ov.commands) return []
-    if (!ov.search) return ov.commands
+    if (!ov.commands)
+      return []
+    if (!ov.search)
+      return ov.commands
     const q = ov.search.toLowerCase()
     return ov.commands.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      (c.description && c.description.toLowerCase().includes(q))
+      c.name.toLowerCase().includes(q)
+      || (c.description && c.description.toLowerCase().includes(q)),
     )
   }
 
@@ -646,7 +680,7 @@ export class Application {
       help,
       args: '',
       mode: 'input',
-      scroll: 0
+      scroll: 0,
     }
     this.update()
   }
@@ -671,7 +705,8 @@ export class Application {
           this.#closeOverlay()
           if (needsConfirmation(cmd.name)) {
             this.#confirmCommand(cmd.name, [...args])
-          } else {
+          }
+          else {
             void this.executeCommand([cmd.name, ...args], false)
           }
           return
@@ -744,7 +779,6 @@ export class Application {
         case 'end':
           ov.scroll = Number.MAX_SAFE_INTEGER
           this.update()
-          return
       }
     }
   }
@@ -755,7 +789,7 @@ export class Application {
     this.state.overlay = {
       type: 'CustomTool',
       input: '',
-      scope: this.state.scope
+      scope: this.state.scope,
     }
     this.update()
   }
@@ -773,7 +807,8 @@ export class Application {
         return
       case 'enter': {
         const spec = ov.input.trim()
-        if (!spec) return
+        if (!spec)
+          return
         this.#closeOverlay()
         const scopeFlag = ov.scope === SCOPE.Global ? ['--global'] : []
         this.executeBackground(['use', '--yes', ...scopeFlag, spec], `use ${spec}`)
@@ -805,7 +840,7 @@ export class Application {
       type: 'ConfirmCommand',
       command: cmdName,
       args,
-      message: t(this.state.language, 'confirm_command', { command: [cmdName, ...args].join(' ') })
+      message: t(this.state.language, 'confirm_command', { command: [cmdName, ...args].join(' ') }),
     }
     this.update()
   }
@@ -815,7 +850,7 @@ export class Application {
       type: 'ConfirmDelete',
       name,
       message: t(this.state.language, 'confirm_delete', { name }),
-      onConfirm
+      onConfirm,
     }
     this.update()
   }
@@ -841,7 +876,6 @@ export class Application {
       case 'q':
         this.#closeOverlay()
         this.update()
-        return
     }
   }
 
@@ -858,19 +892,20 @@ export class Application {
         const proc = Bun.spawn(['mise', ...args], {
           stdout: 'inherit',
           stderr: 'inherit',
-          stdin: 'inherit'
+          stdin: 'inherit',
         })
         await proc.exited
         this.finishCommand({
           command: `mise ${cmdStr}`,
           output: '',
-          success: proc.exitCode === 0
+          success: proc.exitCode === 0,
         })
-      } catch (err) {
+      }
+      catch {
         this.finishCommand({
           command: `mise ${cmdStr}`,
           output: err.message || String(err),
-          success: false
+          success: false,
         })
       }
       return
@@ -879,11 +914,12 @@ export class Application {
     try {
       const result = await execute(args)
       this.finishCommand(result)
-    } catch (err) {
+    }
+    catch {
       this.finishCommand({
         command: `mise ${cmdStr}`,
         output: err.message || String(err),
-        success: false
+        success: false,
       })
     }
   }
@@ -892,16 +928,18 @@ export class Application {
     this.state.logs.unshift({
       command: result.command || '',
       output: result.output || '',
-      success: result.success !== false
+      success: result.success !== false,
     })
     // keep max 100 log entries
-    if (this.state.logs.length > 100) this.state.logs = this.state.logs.slice(0, 100)
+    if (this.state.logs.length > 100)
+      this.state.logs = this.state.logs.slice(0, 100)
     if (result.success) {
       this.state.status = t(this.state.language, 'command_success')
       void this.refresh()
-    } else {
+    }
+    else {
       this.state.status = t(this.state.language, 'command_failed', {
-        error: result.output || 'unknown error'
+        error: result.output || 'unknown error',
       })
       this.update()
     }
@@ -917,15 +955,16 @@ export class Application {
       status: 'pending',
       output: '',
       startTime: Date.now(),
-      endTime: 0
+      endTime: 0,
     }
     this.state.consoleTasks.unshift(task)
-    if (this.state.consoleTasks.length > 100) this.state.consoleTasks = this.state.consoleTasks.slice(0, 100)
+    if (this.state.consoleTasks.length > 100)
+      this.state.consoleTasks = this.state.consoleTasks.slice(0, 100)
     this.update()
 
     const proc = Bun.spawn(['mise', ...args], {
       stdout: 'pipe',
-      stderr: 'pipe'
+      stderr: 'pipe',
     })
 
     task.status = 'running'
@@ -936,23 +975,26 @@ export class Application {
       try {
         const [stdout, stderr] = await Promise.all([
           new Response(proc.stdout).text(),
-          new Response(proc.stderr).text()
+          new Response(proc.stderr).text(),
         ])
-        task.output = (stdout + '\n' + stderr).trim()
+        task.output = (`${stdout}\n${stderr}`).trim()
         task.status = proc.exitCode === 0 ? 'done' : 'failed'
-      } catch (err) {
+      }
+      catch {
         task.output = err.message || String(err)
         task.status = 'failed'
-      } finally {
+      }
+      finally {
         task.endTime = Date.now()
         this.update()
         // Also log to command history
         this.state.logs.unshift({
           command: task.command,
           output: task.output,
-          success: task.status === 'done'
+          success: task.status === 'done',
         })
-        if (this.state.logs.length > 100) this.state.logs = this.state.logs.slice(0, 100)
+        if (this.state.logs.length > 100)
+          this.state.logs = this.state.logs.slice(0, 100)
       }
     })()
   }
@@ -961,21 +1003,24 @@ export class Application {
 
   async useSelectedVersion() {
     const tool = this.selectedTool()
-    if (!tool) return
+    if (!tool)
+      return
     this.state.overlay = null
     await this.openVersionsForAction(VERSION_INTENT.Use)
   }
 
   async installSelectedVersion() {
     const tool = this.selectedTool()
-    if (!tool) return
+    if (!tool)
+      return
     this.state.overlay = null
     await this.openVersionsForAction(VERSION_INTENT.Install)
   }
 
   async openVersionsForAction(intent) {
     const tool = this.selectedTool()
-    if (!tool) return
+    if (!tool)
+      return
     this.state.overlay = {
       type: 'Picker',
       level: 'versions',
@@ -987,14 +1032,15 @@ export class Application {
       backends: ['All'],
       filterIdx: 0,
       search: '',
-      statusText: t(this.state.language, 'loading_versions')
+      statusText: t(this.state.language, 'loading_versions'),
     }
     this.update()
     try {
       const versions = await remoteVersions(tool.name)
       this.state.overlay.versions = versions
       this.state.overlay.statusText = ''
-    } catch {
+    }
+    catch {
       this.state.overlay.statusText = t(this.state.language, 'error_load_failed')
       this.state.overlay.versions = []
     }
@@ -1003,7 +1049,8 @@ export class Application {
 
   async deleteSelectedTool() {
     const tool = this.selectedTool()
-    if (!tool) return
+    if (!tool)
+      return
     this.#confirmDelete(tool.name, () => {
       this.executeBackground(['uninstall', '--yes', tool.name], `uninstall ${tool.name}`)
     })
@@ -1011,10 +1058,12 @@ export class Application {
 
   toggleSelectedUpdate() {
     const update = this.selectedUpdate()
-    if (!update) return
+    if (!update)
+      return
     if (this.state.selectedUpdates.has(update.name)) {
       this.state.selectedUpdates.delete(update.name)
-    } else {
+    }
+    else {
       this.state.selectedUpdates.add(update.name)
     }
     this.update()
@@ -1026,7 +1075,8 @@ export class Application {
       ? updates.filter(u => this.state.selectedUpdates.has(u.name))
       : updates
 
-    if (toUpgrade.length === 0) return
+    if (toUpgrade.length === 0)
+      return
 
     const names = toUpgrade.map(u => u.name)
     this.state.overlay = {
@@ -1035,28 +1085,31 @@ export class Application {
       args: ['--yes', ...names],
       message: t(this.state.language, 'confirm_upgrade', { count: names.length }),
       onConfirm: () => {
-          this.state.selectedUpdates.clear()
-          this.executeBackground(['upgrade', '--yes', ...names], `upgrade ${names.length} tool(s)`)
-        }
+        this.state.selectedUpdates.clear()
+        this.executeBackground(['upgrade', '--yes', ...names], `upgrade ${names.length} tool(s)`)
+      },
     }
     this.update()
   }
 
   async runSelectedTask() {
     const task = this.selectedTask()
-    if (!task) return
+    if (!task)
+      return
     await this.executeCommand(['run', task.name], true)
   }
 
   async openConfig() {
     const config = this.selectedConfig()
-    if (!config) return
+    if (!config)
+      return
     await this.executeCommand(['edit', config.path], true)
   }
 
   async runPageCommand() {
     const cmd = this.selectedPageCommand()
-    if (!cmd) return
+    if (!cmd)
+      return
     this.#openCommandBuilder(cmd)
   }
 
@@ -1069,7 +1122,8 @@ export class Application {
   }
 
   setScope(scope) {
-    if (this.state.scope === scope) return
+    if (this.state.scope === scope)
+      return
     this.state.scope = scope
     this.state.status = t(this.state.language, scope === SCOPE.Project ? 'scope_project' : 'scope_global')
     this.update()
@@ -1083,7 +1137,8 @@ export class Application {
   // ---- navigation helpers ----
 
   jumpToPage(page) {
-    if (this.state.page === page) return
+    if (this.state.page === page)
+      return
     this.state.page = page
     this.state.focus = FOCUS.Navigation
     this.state.selected = 0
@@ -1095,7 +1150,8 @@ export class Application {
 
   changePage(delta) {
     const idx = PAGE_ORDER.indexOf(this.state.page)
-    if (idx < 0) return
+    if (idx < 0)
+      return
     const newIdx = ((idx + delta) % PAGE_ORDER.length + PAGE_ORDER.length) % PAGE_ORDER.length
     this.jumpToPage(PAGE_ORDER[newIdx])
   }
@@ -1105,7 +1161,8 @@ export class Application {
     const idx = seq.indexOf(this.state.focus)
     if (idx < 0) {
       this.state.focus = FOCUS.Navigation
-    } else {
+    }
+    else {
       const newIdx = ((idx + delta) % seq.length + seq.length) % seq.length
       this.state.focus = seq[newIdx]
     }
@@ -1117,12 +1174,14 @@ export class Application {
     if (focus === FOCUS.Navigation) {
       // in nav, move between pages
       this.changePage(delta)
-    } else if (focus === FOCUS.List) {
+    }
+    else if (focus === FOCUS.List) {
       const len = this.currentListLen()
       this.state.selected = moveIndex(this.state.selected, delta, len)
       this.clampSelection()
       this.update()
-    } else if (focus === FOCUS.Details) {
+    }
+    else if (focus === FOCUS.Details) {
       this.state.detailScroll = Math.max(0, this.state.detailScroll + delta)
       this.update()
     }
@@ -1133,7 +1192,8 @@ export class Application {
     const idx = seq.indexOf(this.state.focus)
     if (idx < 0) {
       this.state.focus = FOCUS.Navigation
-    } else {
+    }
+    else {
       const newIdx = Math.max(0, Math.min(seq.length - 1, idx + delta))
       this.state.focus = seq[newIdx]
     }
@@ -1144,7 +1204,8 @@ export class Application {
     if (this.state.focus === FOCUS.List) {
       this.state.selected = 0
       this.update()
-    } else if (this.state.focus === FOCUS.Details) {
+    }
+    else if (this.state.focus === FOCUS.Details) {
       this.state.detailScroll = 0
       this.update()
     }
@@ -1155,7 +1216,8 @@ export class Application {
       const len = this.currentListLen()
       this.state.selected = len > 0 ? len - 1 : 0
       this.update()
-    } else if (this.state.focus === FOCUS.Details) {
+    }
+    else if (this.state.focus === FOCUS.Details) {
       this.state.detailScroll = Number.MAX_SAFE_INTEGER
       this.update()
     }
@@ -1192,7 +1254,8 @@ export class Application {
       const text = readFileSync(config.path, 'utf8')
       this.#copyToClipboard(text)
       this.state.status = t(this.state.language, 'config_copied', { path: config.path })
-    } catch (err) {
+    }
+    catch {
       this.state.status = t(this.state.language, 'config_copy_failed', { error: err.message })
     }
     this.update()
@@ -1202,41 +1265,46 @@ export class Application {
 
   #filteredTools() {
     const tools = this.state.snapshot.tools || []
-    if (!this.state.search) return tools
+    if (!this.state.search)
+      return tools
     const q = this.state.search.toLowerCase()
     return tools.filter(t => containsCaseInsensitive(t.name, q))
   }
 
   #filteredUpdates() {
     const updates = this.state.snapshot.updates || []
-    if (!this.state.search) return updates
+    if (!this.state.search)
+      return updates
     const q = this.state.search.toLowerCase()
     return updates.filter(u => containsCaseInsensitive(u.name, q))
   }
 
   #filteredTasks() {
     const tasks = this.state.snapshot.tasks || []
-    if (!this.state.search) return tasks
+    if (!this.state.search)
+      return tasks
     const q = this.state.search.toLowerCase()
     return tasks.filter(t =>
-      containsCaseInsensitive(t.name, q) ||
-      containsCaseInsensitive(t.description, q)
+      containsCaseInsensitive(t.name, q)
+      || containsCaseInsensitive(t.description, q),
     )
   }
 
   #filteredConfigs() {
     const configs = this.state.snapshot.configs || []
-    if (!this.state.search) return configs
+    if (!this.state.search)
+      return configs
     const q = this.state.search.toLowerCase()
     return configs.filter(c => containsCaseInsensitive(c.path, q))
   }
 
   #filteredLogs() {
-    if (!this.state.search) return this.state.logs
+    if (!this.state.search)
+      return this.state.logs
     const q = this.state.search.toLowerCase()
     return this.state.logs.filter(l =>
-      containsCaseInsensitive(l.command, q) ||
-      containsCaseInsensitive(l.output, q)
+      containsCaseInsensitive(l.command, q)
+      || containsCaseInsensitive(l.output, q),
     )
   }
 
@@ -1245,7 +1313,8 @@ export class Application {
     const pageCmds = page === PAGE.Dashboard
       ? DASHBOARD_COMMANDS
       : commands.filter(c => commandBelongsToPage(page, c.name))
-    if (!this.state.search) return pageCmds
+    if (!this.state.search)
+      return pageCmds
     const q = this.state.search.toLowerCase()
     return pageCmds.filter(c => c.toLowerCase().includes(q))
   }
@@ -1278,7 +1347,8 @@ export class Application {
   selectedPageCommand() {
     const filtered = this.#filteredPageCommands()
     const match = filtered[this.state.selected]
-    if (!match) return null
+    if (!match)
+      return null
     if (typeof match === 'string') {
       const full = this.state.commands.find(c => c.name === match)
       return full || { name: match, description: '' }
@@ -1287,10 +1357,11 @@ export class Application {
   }
 
   matches(primary, secondary) {
-    if (!this.state.search) return true
+    if (!this.state.search)
+      return true
     const q = this.state.search.toLowerCase()
-    return (primary || '').toLowerCase().includes(q) ||
-      (secondary || '').toLowerCase().includes(q)
+    return (primary || '').toLowerCase().includes(q)
+      || (secondary || '').toLowerCase().includes(q)
   }
 
   currentListLen() {
@@ -1313,7 +1384,8 @@ export class Application {
     const len = this.currentListLen()
     if (len <= 0) {
       this.state.selected = 0
-    } else {
+    }
+    else {
       this.state.selected = Math.max(0, Math.min(this.state.selected, len - 1))
     }
   }

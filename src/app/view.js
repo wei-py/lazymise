@@ -1,8 +1,7 @@
-import process from 'node:process'
 import { fg, StyledText, TextRenderable } from '@opentui/core'
 import stringWidth from 'string-width'
 import { t } from '../config/i18n.js'
-import { clipColumns, containsCaseInsensitive, FOCUS, layoutMode, PAGE, PAGE_ORDER } from './state.js'
+import { clipColumns, containsCaseInsensitive, FOCUS, layoutMode, PAGE_ORDER } from './state.js'
 
 const COLORS = {
   text: '#d4d4d4',
@@ -18,15 +17,18 @@ const COLORS = {
   accent: '#00ffff',
 }
 
-const SEGMENTS = new Intl.Segmenter(void 0, { granularity: 'grapheme' })
 const PANEL_IDS = ['nav', 'list', 'detail']
 const PANEL_FOCUS = { nav: 'Navigation', list: 'List', detail: 'Details' }
 const NODE_IDS = [
-  'header', 'headerInner',
+  'header',
+  'headerInner',
   ...PANEL_IDS.flatMap(id => [`${id}Frame`, `${id}Inner`, `${id}Selection`]),
-  'status', 'statusInner',
+  'status',
+  'statusInner',
   'keys',
-  'modal', 'modalInner', 'modalSelection',
+  'modal',
+  'modalInner',
+  'modalSelection',
 ]
 
 function padColumns(value, width) {
@@ -48,7 +50,7 @@ function windowContent(lines, index, size) {
 
 /** Sidebar: page navigation. */
 function navContent(s) {
-  const entries = PAGE_ORDER.map((page, i) => {
+  const entries = PAGE_ORDER.map((page, _i) => {
     const marker = page === s.page ? '▸' : ' '
     return `${marker} ${pageName(page, s.language)}`
   })
@@ -123,7 +125,7 @@ function listContent(s) {
       const tasks = s.consoleTasks || []
       items = tasks
       title = t(language, 'Console')
-      renderItem = task => {
+      renderItem = (task) => {
         const icon = { pending: '⏳', running: '🔄', done: ' ✓', failed: ' ✗' }[task.status] || ' ?'
         const elapsed = task.startTime ? ` ${Math.round((Date.now() - task.startTime) / 1000)}s` : ''
         return `${icon} ${clipColumns(task.label, 40)}${clipColumns(elapsed, 8)}`
@@ -147,7 +149,7 @@ function listContent(s) {
   return { title, ...content }
 }
 
-function getEmptyMessage(page, language) {
+function getEmptyMessage(page, _language) {
   const map = {
     Tools: 'No tools found',
     Updates: 'No updates found',
@@ -297,7 +299,7 @@ function detailContent(s) {
           pending: t(language, 'console_pending'),
           running: t(language, 'console_running'),
           done: t(language, 'console_done'),
-          failed: t(language, 'console_failed')
+          failed: t(language, 'console_failed'),
         }[task.status] || task.status
         const elapsed = task.startTime ? Math.round(((task.endTime || Date.now()) - task.startTime) / 1000) : 0
         lines = [
@@ -308,7 +310,8 @@ function detailContent(s) {
           '',
           task.output || t(language, '(waiting for output...)'),
         ]
-      } else {
+      }
+      else {
         lines = [t(language, 'No task selected')]
       }
       break
@@ -332,26 +335,6 @@ function detailContent(s) {
   }
 
   return { title, lines }
-}
-
-function keyHints(s) {
-  if (s.overlay) {
-    if (s.overlay.type === 'Search')
-      return t(s.language, 'SEARCH: Type to filter | Enter apply | Esc clear | Tab cycle')
-    if (s.overlay.type === 'Help')
-      return t(s.language, 'HELP: Esc/q close | j/k scroll')
-    if (s.overlay.type === 'Picker')
-      return t(s.language, 'PICKER: j/k select | Enter confirm | / search | Esc back | Tab filter')
-    if (s.overlay.type === 'CommandPalette')
-      return t(s.language, 'PALETTE: j/k select | Enter choose | / search | Esc close')
-    if (s.overlay.type === 'CommandBuilder')
-      return t(s.language, 'BUILDER: Enter execute | Tab switch | Esc close')
-    if (s.overlay.type === 'Confirm')
-      return t(s.language, 'CONFIRM: Enter/y accept | Esc/n/q cancel')
-    return t(s.language, 'Esc close')
-  }
-  const lang = s.language
-  return t(lang, 'm page actions  : expert  ? help  q quit | j/k move  h/l switch focus  Tab cycle')
 }
 
 function pageActionsHint(s) {
@@ -380,8 +363,12 @@ function box(id, left, top, width, height, content, frameColor = COLORS.border, 
   const counter = content.counter ? clipColumns(` ${content.counter} `, innerWidth) : ''
 
   const border = {
-    topLeft: '╭', topRight: '╮', bottomLeft: '╰', bottomRight: '╯',
-    horizontal: '─', vertical: '│',
+    topLeft: '╭',
+    topRight: '╮',
+    bottomLeft: '╰',
+    bottomRight: '╯',
+    horizontal: '─',
+    vertical: '│',
   }
 
   const frame = [
@@ -416,7 +403,8 @@ function panel(id, left, top, width, height, content, s) {
 function showNode(nodes, id, left, top, width, height, lines, color = COLORS.text, background = COLORS.background, colors) {
   const node = nodes[id]
   if (!node || width <= 0 || height <= 0) {
-    if (node) node.visible = false
+    if (node)
+      node.visible = false
     return
   }
   node.visible = true
@@ -646,7 +634,7 @@ function renderOverlay(nodes, overlay, width, height, language, searchText) {
   renderBox(nodes, 'modal', boxResult)
 }
 
-function renderPickerTitle(overlay, language) {
+function renderPickerTitle(overlay, _language) {
   switch (overlay.level) {
     case 'registry': return 'Registry'
     case 'backends': return 'Select backend'
@@ -655,7 +643,7 @@ function renderPickerTitle(overlay, language) {
   }
 }
 
-function renderPickerLines(overlay, language) {
+function renderPickerLines(overlay, _language) {
   switch (overlay.level) {
     case 'registry': {
       const items = overlay.tools || []

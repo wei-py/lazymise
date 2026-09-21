@@ -163,6 +163,7 @@ function parseCommandCatalog(help) {
   const commands = []
   const lines = help.split('\n')
   for (const line of lines) {
+    // eslint-disable-next-line regexp/no-misleading-capturing-group, regexp/no-super-linear-backtracking
     const match = line.match(/^\s{2}(\S[^ ]{1,40})\s{2,}(.+)$/)
     if (match) {
       commands.push({ name: match[1].trim(), description: match[2].trim() })
@@ -183,22 +184,67 @@ export async function commandHelp(command) {
 
 // Command groupings (ported from Rust lazymise)
 export const TOOL_COMMANDS = [
-  'backends', 'install', 'install-into', 'latest', 'link', 'ls', 'ls-remote',
-  'plugins', 'prune', 'registry', 'reshim', 'search', 'sync', 'test-tool',
-  'tool', 'tool-alias', 'tool-stub', 'uninstall', 'unuse', 'use', 'where',
+  'backends',
+  'install',
+  'install-into',
+  'latest',
+  'link',
+  'ls',
+  'ls-remote',
+  'plugins',
+  'prune',
+  'registry',
+  'reshim',
+  'search',
+  'sync',
+  'test-tool',
+  'tool',
+  'tool-alias',
+  'tool-stub',
+  'uninstall',
+  'unuse',
+  'use',
+  'where',
 ]
 export const UPDATE_COMMANDS = ['outdated', 'prune', 'upgrade']
 export const TASK_COMMANDS = ['deps', 'run', 'tasks', 'watch']
 export const ENVIRONMENT_COMMANDS = [
-  'activate', 'bin-paths', 'deactivate', 'en', 'env', 'exec',
-  'shell', 'shell-alias', 'which',
+  'activate',
+  'bin-paths',
+  'deactivate',
+  'en',
+  'env',
+  'exec',
+  'shell',
+  'shell-alias',
+  'which',
 ]
 export const CONFIG_COMMANDS = [
-  'config', 'edit', 'fmt', 'lock', 'set', 'settings', 'trust', 'unset', 'untrust',
+  'config',
+  'edit',
+  'fmt',
+  'lock',
+  'set',
+  'settings',
+  'trust',
+  'unset',
+  'untrust',
 ]
 export const SYSTEM_COMMANDS = [
-  'bootstrap', 'cache', 'completion', 'doctor', 'generate', 'help',
-  'implode', 'mcp', 'oci', 'patrons', 'self-update', 'sponsors', 'token', 'version',
+  'bootstrap',
+  'cache',
+  'completion',
+  'doctor',
+  'generate',
+  'help',
+  'implode',
+  'mcp',
+  'oci',
+  'patrons',
+  'self-update',
+  'sponsors',
+  'token',
+  'version',
 ]
 export const DASHBOARD_COMMANDS = ['bootstrap', 'doctor', 'help', 'self-update', 'version']
 
@@ -220,8 +266,16 @@ export function commandBelongsToPage(page, commandName) {
 
 /** Commands requiring confirmation before execution. */
 const CONFIRM_COMMANDS = new Set([
-  'cache', 'config', 'implode', 'prune', 'self-update',
-  'sync', 'uninstall', 'unset', 'untrust', 'unuse',
+  'cache',
+  'config',
+  'implode',
+  'prune',
+  'self-update',
+  'sync',
+  'uninstall',
+  'unset',
+  'untrust',
+  'unuse',
 ])
 
 export function needsConfirmation(commandName) {

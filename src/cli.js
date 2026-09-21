@@ -1,6 +1,6 @@
-import process from 'node:process'
 import { spawnSync } from 'node:child_process'
-import { loadSnapshot, execute, registry } from './mise.js'
+import process from 'node:process'
+import { loadSnapshot, registry } from './mise.js'
 
 const HELP = `lazymise — mise TUI manager
 

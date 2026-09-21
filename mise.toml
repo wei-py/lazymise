@@ -8,4 +8,4 @@ run = "bun src/main.js"
 
 [tasks.check]
 description = "Run all checks"
-depends = ["lint"]
+depends = [ "lint" ]
