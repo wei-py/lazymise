@@ -97,29 +97,31 @@ cargo run
 
 ### 搜索和选择
 
-| 按键        | 操作                                                  |
-| ----------- | ----------------------------------------------------- |
-| `/`         | 搜索或过滤当前列表；在选择器中再次按 `/` 可过滤候选项 |
-| `Backspace` | 删除一个搜索字符                                      |
-| `Enter`     | 应用搜索，或选择当前候选项                            |
-| `Esc`       | 清除搜索并关闭输入框，或取消选择器                    |
-| `Space`     | 在 Updates 页面选中或取消选中更新项                   |
+| 按键          | 操作                                                               |
+| ------------- | ------------------------------------------------------------------ |
+| `/`           | 搜索或过滤当前列表；registry、来源和版本三个选择阶段均可再次筛选   |
+| `Tab`         | 在 registry 选择器中切换到下一个动态来源筛选                       |
+| `Shift-Tab`   | 在 registry 选择器中切换到上一个动态来源筛选                       |
+| `Backspace`   | 删除一个搜索字符                                                   |
+| `Enter`       | 应用搜索，或选择当前候选项                                         |
+| `Esc`         | 清除搜索；在来源选择阶段返回 registry；其他选择阶段取消            |
+| `q`           | 取消整个选择流程                                                   |
+| `Space`       | 在 Updates 页面选中或取消选中更新项                                |
 
-搜索覆盖 Tools、Updates、Tasks、Environment、Config、System 和 Command Log。工具注册表支持按工具名、描述、后端及多个关键词筛选；输入没有注册表匹配项的 `github:owner/repository` 后按 `Enter`，可直接查询该后端的版本。版本选择器可按版本号搜索。
+搜索覆盖 Tools、Updates、Tasks、Environment、Config、System 和 Command Log。添加工具始终从同一个 registry 选择器开始；来源筛选由 `mise registry --json` 返回的数据动态生成，`All` 位于首位，常见的 npm、GitHub、Go、Cargo 筛选优先显示，同时 Aqua、asdf、vfox、pipx 和所有其他来源前缀仍可通过 `Tab` / `Shift-Tab` 到达。工具名、描述、完整后端标识和多个关键词搜索会与当前来源筛选按 AND 语义组合。来源选择器按完整后端标识筛选，版本选择器按版本号筛选。
 
 ### 工具管理
 工具列表的“最新”列仅评估已安装且当前启用的版本：`是` 表示 `mise outdated` 未报告更新，`否` 表示存在更新，`—` 表示该版本未启用或尚未安装。
 
-
-| 按键 | 生效位置   | 操作                                                         |
-| ---- | ---------- | ------------------------------------------------------------ |
-| `a`  | 任意主页面 | 打开 mise registry；选择器内按 `c` 可输入自定义后端工具      |
-| `A`  | 任意主页面 | 直接输入 `github:owner/repo`、`npm:package` 等后端工具标识   |
+| 按键 | 生效位置   | 操作                                                                 |
+| ---- | ---------- | -------------------------------------------------------------------- |
+| `a`  | 任意主页面 | 打开统一 registry；按来源筛选，必要时明确选择来源，再选择版本        |
+| `A`  | 任意主页面 | 直接输入 `github:owner/repo`、`npm:package` 等完整后端工具标识       |
 | `v`  | Tools      | 查询选中工具的所有远程版本，选择后安装并激活到当前 scope     |
 | `i`  | Tools      | 查询选中工具的所有远程版本，仅安装选中版本，不修改配置       |
 | `d`  | Tools      | 请求确认后卸载选中的已安装版本                               |
-| `p`  | 任意主页面 | 将写入作用域设为 Project                                     |
-| `G`  | 任意主页面 | 将写入作用域设为 Global                                      |
+| `p`  | 主页面或选择器 | 将写入作用域设为 Project；筛选输入状态下仍输入文字             |
+| `G`  | 主页面或选择器 | 将写入作用域设为 Global；筛选输入状态下仍输入文字              |
 
 不在 mise registry 中的工具也可以添加。例如 LazySQL：
 
@@ -127,7 +129,9 @@ cargo run
 A → github:jorgerojas26/lazysql → 选择版本
 ```
 
-也可以粘贴 GitHub URL，或输入 `owner/repository`，lazymise 会转换为 `github:` 后端标识。
+registry 选择器内也可按 `c` 或 `A` 打开同一个自定义输入框。可以粘贴 GitHub URL，或输入 `owner/repository`，lazymise 会转换为 `github:` 后端标识。`npm:package`、`cargo:crate` 等完整标识已经明确来源，因此直接进入版本查询，不会再显示来源选择器。
+
+自定义后端输入框会直接显示写入位置，可按 `Tab` 在 Project 与 Global 之间切换，不会丢失已经输入的后端标识。
 
 对应的 mise 命令：
 
@@ -203,7 +207,7 @@ E → 选择 exec → Enter
 Enter
 ```
 
-参数页实时显示 `mise <command> -h`。参数支持 shell 引号，但参数框不重复输入 `mise` 和命令名。
+参数页实时显示 `mise <command> -h`。参数支持 shell 引号，但参数框不重复输入 `mise` 和命令名。默认焦点在参数框，可直接输入；按 `Tab` 进入帮助阅读模式后，用 `h/j/k/l` 或方向键横向、纵向滚动，`PgUp` / `PgDn` 翻页，`g` / `G` 跳到首尾；再按 `Tab` 或 `Enter` 返回参数框。
 
 ### `:` 仅作为专家兜底
 
@@ -270,14 +274,17 @@ eval "$(mise activate zsh)"
 
 ### 添加当前没有的工具
 
-1. 按 `a`。
-2. lazymise 调用 `mise registry --json` 加载官方注册表。
-3. 按 `/` 搜索工具名、描述或后端，例如 `java`、`AI`、`github:owner`。
-4. `Enter` 选择注册表工具；若输入的是无匹配项的 `github:owner/repository`，则直接查询该后端。
-5. 搜索并选择版本。
-6. lazymise 根据顶部 scope 执行 Project 或 Global 的 `mise use`。
+1. 按 `a` 打开唯一的 registry 选择器。
+2. lazymise 调用 `mise registry --json` 加载工具及其完整后端标识，并从实际数据动态生成来源筛选。
+3. 按 `Tab` / `Shift-Tab` 循环来源：`All` 最先，npm、GitHub、Go、Cargo 等常见来源优先；Aqua、asdf、vfox、pipx 及未来出现的其他前缀不会被隐藏。
+4. 按 `/` 搜索工具名、描述或完整后端标识。文字查询与当前来源筛选同时生效，切换来源不会清除查询。
+5. 按 `Enter` 选择工具。零个后端时使用 registry 短名称；只有一个后端时直接查询该完整标识；有多个后端时进入来源选择器，列出全部来源，并预选匹配当前筛选的来源。
+6. 在来源选择器中用 `j/k`、`/` 和 `Enter` 明确选择完整后端标识；按 `Esc` 返回之前的 registry 筛选、查询和选中位置。
+7. 搜索并选择版本。最终 `mise use` / `mise install` 使用所选完整后端标识，不移除或改写前缀。
+8. 若 registry 中没有匹配项，可直接输入 `npm:package` 等完整标识并按 `Enter`，或按 `c` / `A` 打开自定义输入。GitHub URL 和 `owner/repository` 也受支持。
+9. registry、来源和版本选择器底部持续显示写入位置；未输入筛选文字时，可直接按 `p` / `G` 切换 Project 或 Global，再执行对应的 `mise use`。
 
-这样不需要提前记住 backend 或版本号。
+因此常见来源能快速到达，registry 返回的其他来源仍全部可选，也不需要提前记住版本号。
 
 ## Project 与 Global scope
 
@@ -289,7 +296,7 @@ eval "$(mise activate zsh)"
 p
 ```
 
-顶部显示 `[PROJECT]`。`a` 和 `v` 默认写入当前项目的 `mise.toml`。
+顶部及会写配置的选择器显示 `[PROJECT]` / `PROJECT`。在主页面或选择器中按 `p`，`a` 和 `v` 将写入当前项目的 `mise.toml`。
 
 ### Global
 
@@ -299,7 +306,7 @@ p
 G
 ```
 
-顶部显示 `[GLOBAL]`。`a` 和 `v` 使用 `mise use --global` 写入全局配置。
+顶部及会写配置的选择器显示 `[GLOBAL]` / `GLOBAL`。在主页面或选择器中按 `G`，`a` 和 `v` 使用 `mise use --global` 写入全局配置。自定义后端输入框使用 `Tab` 切换作用域。
 
 `i` 只安装版本，不写配置，因此不受 scope 影响。`d` 删除具体安装版本，也不修改 `mise.toml`。
 

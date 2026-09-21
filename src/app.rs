@@ -135,10 +135,28 @@ pub enum VersionIntent {
     Install,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BackendFilter {
+    All,
+    Prefix(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegistryPickerState {
+    pub items: Vec<RegistryTool>,
+    pub filters: Vec<BackendFilter>,
+    pub filter_index: usize,
+    pub selected: usize,
+    pub query: String,
+    pub searching: bool,
+}
+
 #[derive(Clone, Debug)]
 pub enum Picker {
-    Registry {
-        items: Vec<RegistryTool>,
+    Registry(RegistryPickerState),
+    Backends {
+        registry: RegistryPickerState,
+        tool: RegistryTool,
         selected: usize,
         query: String,
         searching: bool,
@@ -156,25 +174,45 @@ pub enum Picker {
 impl Picker {
     pub fn query(&self) -> &str {
         match self {
-            Picker::Registry { query, .. } | Picker::Versions { query, .. } => query,
+            Picker::Registry(state) => &state.query,
+            Picker::Backends { query, .. } | Picker::Versions { query, .. } => query,
         }
     }
 
     pub fn selected(&self) -> usize {
         match self {
-            Picker::Registry { selected, .. } | Picker::Versions { selected, .. } => *selected,
+            Picker::Registry(state) => state.selected,
+            Picker::Backends { selected, .. } | Picker::Versions { selected, .. } => *selected,
         }
     }
 
     pub fn searching(&self) -> bool {
         match self {
-            Picker::Registry { searching, .. } | Picker::Versions { searching, .. } => *searching,
+            Picker::Registry(state) => state.searching,
+            Picker::Backends { searching, .. } | Picker::Versions { searching, .. } => *searching,
         }
+    }
+
+    pub fn writes_scope(&self) -> bool {
+        !matches!(
+            self,
+            Picker::Versions {
+                intent: VersionIntent::Install,
+                ..
+            }
+        )
     }
 
     pub fn title(&self, locale: Locale) -> String {
         match self {
-            Picker::Registry { .. } => locale.text("Add tool", "添加工具").into(),
+            Picker::Registry(_) => locale.text("Add tool", "添加工具").into(),
+            Picker::Backends { tool, .. } => {
+                if locale == Locale::Chinese {
+                    format!("选择 {} 来源", tool.name)
+                } else {
+                    format!("Choose {} backend", tool.name)
+                }
+            }
             Picker::Versions { tool, intent, .. } => {
                 let action = match intent {
                     VersionIntent::Add => locale.text("Add", "添加"),
@@ -192,9 +230,18 @@ impl Picker {
 
     pub fn visible_len(&self) -> usize {
         match self {
-            Picker::Registry { items, query, .. } => items
+            Picker::Registry(state) => {
+                let filter = active_registry_filter(state);
+                state
+                    .items
+                    .iter()
+                    .filter(|item| registry_matches(item, &state.query, filter))
+                    .count()
+            }
+            Picker::Backends { tool, query, .. } => tool
+                .backends
                 .iter()
-                .filter(|item| registry_matches(item, query))
+                .filter(|backend| backend_matches(backend, query))
                 .count(),
             Picker::Versions { items, query, .. } => items
                 .iter()
@@ -202,6 +249,13 @@ impl Picker {
                 .count(),
         }
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct HelpViewport {
+    pub focused: bool,
+    pub line: usize,
+    pub column: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -221,6 +275,7 @@ pub enum Overlay {
         spec: CommandSpec,
         arguments: String,
         help: String,
+        help_viewport: HelpViewport,
     },
     CustomTool {
         input: String,
@@ -638,7 +693,7 @@ impl App {
                 }
                 Action::None
             }
-            Overlay::Picker(mut picker) => self.handle_picker_key(key, &mut picker),
+            Overlay::Picker(picker) => self.handle_picker_key(key, picker),
             Overlay::CommandPalette {
                 title,
                 items,
@@ -650,7 +705,8 @@ impl App {
                 spec,
                 arguments,
                 help,
-            } => self.handle_command_builder_key(key, spec, arguments, help),
+                help_viewport,
+            } => self.handle_command_builder_key(key, spec, arguments, help, help_viewport),
             Overlay::CustomTool { input } => self.handle_custom_tool_key(key, input),
             Overlay::ConfirmDelete { tool, version } => match key.code {
                 KeyCode::Enter | KeyCode::Char('y') => Action::DeleteVersion { tool, version },
@@ -763,6 +819,7 @@ impl App {
                                 spec,
                                 arguments: String::new(),
                                 help,
+                                help_viewport: HelpViewport::default(),
                             };
                         }
                         Err(error) => {
@@ -794,16 +851,67 @@ impl App {
         spec: CommandSpec,
         mut arguments: String,
         help: String,
+        mut help_viewport: HelpViewport,
     ) -> Action {
-        match key.code {
-            KeyCode::Esc => Action::None,
-            KeyCode::Backspace => {
-                arguments.pop();
-                self.overlay = Overlay::CommandBuilder {
+        let restore =
+            |app: &mut Self, spec: CommandSpec, arguments: String, help: String, help_viewport| {
+                app.overlay = Overlay::CommandBuilder {
                     spec,
                     arguments,
                     help,
+                    help_viewport,
                 };
+            };
+
+        if help_viewport.focused {
+            match key.code {
+                KeyCode::Esc => return Action::None,
+                KeyCode::Tab | KeyCode::BackTab | KeyCode::Enter => {
+                    help_viewport.focused = false;
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    help_viewport.line = move_cursor(help_viewport.line, 1, help_line_count(&help));
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    help_viewport.line =
+                        move_cursor(help_viewport.line, -1, help_line_count(&help));
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    help_viewport.column =
+                        move_cursor(help_viewport.column, 1, help_column_count(&help));
+                }
+                KeyCode::Left | KeyCode::Char('h') => {
+                    help_viewport.column =
+                        move_cursor(help_viewport.column, -1, help_column_count(&help));
+                }
+                KeyCode::PageDown => {
+                    help_viewport.line =
+                        move_cursor(help_viewport.line, 10, help_line_count(&help));
+                }
+                KeyCode::PageUp => {
+                    help_viewport.line =
+                        move_cursor(help_viewport.line, -10, help_line_count(&help));
+                }
+                KeyCode::Home | KeyCode::Char('g') => help_viewport.line = 0,
+                KeyCode::End | KeyCode::Char('G') => {
+                    help_viewport.line = help_line_count(&help).saturating_sub(1);
+                }
+                _ => {}
+            }
+            restore(self, spec, arguments, help, help_viewport);
+            return Action::None;
+        }
+
+        match key.code {
+            KeyCode::Esc => Action::None,
+            KeyCode::Tab | KeyCode::BackTab => {
+                help_viewport.focused = true;
+                restore(self, spec, arguments, help, help_viewport);
+                Action::None
+            }
+            KeyCode::Backspace => {
+                arguments.pop();
+                restore(self, spec, arguments, help, help_viewport);
                 Action::None
             }
             KeyCode::Enter => match shell_words::split(&arguments) {
@@ -823,11 +931,7 @@ impl App {
                         "{}: {error}",
                         self.locale.text("Invalid arguments", "参数无效")
                     );
-                    self.overlay = Overlay::CommandBuilder {
-                        spec,
-                        arguments,
-                        help,
-                    };
+                    restore(self, spec, arguments, help, help_viewport);
                     Action::None
                 }
             },
@@ -837,100 +941,138 @@ impl App {
                     .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
             {
                 arguments.push(character);
-                self.overlay = Overlay::CommandBuilder {
-                    spec,
-                    arguments,
-                    help,
-                };
+                restore(self, spec, arguments, help, help_viewport);
                 Action::None
             }
             _ => {
-                self.overlay = Overlay::CommandBuilder {
-                    spec,
-                    arguments,
-                    help,
-                };
+                restore(self, spec, arguments, help, help_viewport);
                 Action::None
             }
         }
     }
 
-    fn handle_picker_key(&mut self, key: KeyEvent, picker: &mut Picker) -> Action {
+    fn handle_picker_key(&mut self, key: KeyEvent, mut picker: Picker) -> Action {
         if picker.searching() {
             match key.code {
                 KeyCode::Enter => {
-                    let direct_tool = match picker {
-                        Picker::Registry { items, query, .. }
-                            if !items.iter().any(|item| registry_matches(item, query)) =>
+                    let direct_tool = match &picker {
+                        Picker::Registry(state)
+                            if !state.items.iter().any(|item| {
+                                registry_matches(item, &state.query, active_registry_filter(state))
+                            }) =>
                         {
-                            custom_backend_query(query)
+                            custom_backend_query(&state.query)
                         }
                         _ => None,
                     };
                     if let Some(tool) = direct_tool {
+                        self.overlay = Overlay::Picker(picker);
                         self.open_versions(&tool, VersionIntent::Add);
                         return Action::None;
                     }
-                    set_picker_searching(picker, false);
+                    set_picker_searching(&mut picker, false);
                 }
                 KeyCode::Esc => {
-                    picker_query_mut(picker).clear();
-                    set_picker_searching(picker, false);
-                    set_picker_selected(picker, 0);
+                    picker_query_mut(&mut picker).clear();
+                    set_picker_searching(&mut picker, false);
+                    set_picker_selected(&mut picker, 0);
                 }
                 KeyCode::Backspace => {
-                    picker_query_mut(picker).pop();
-                    set_picker_selected(picker, 0);
+                    picker_query_mut(&mut picker).pop();
+                    set_picker_selected(&mut picker, 0);
                 }
                 KeyCode::Char(character)
                     if !key
                         .modifiers
                         .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                 {
-                    picker_query_mut(picker).push(character);
-                    set_picker_selected(picker, 0);
+                    picker_query_mut(&mut picker).push(character);
+                    set_picker_selected(&mut picker, 0);
                 }
                 _ => {}
             }
-            self.overlay = Overlay::Picker(picker.clone());
+            self.overlay = Overlay::Picker(picker);
             return Action::None;
         }
 
-        if matches!(picker, Picker::Registry { .. }) && key.code == KeyCode::Char('c') {
+        if picker.writes_scope() {
+            let scope = match key.code {
+                KeyCode::Char('p') => Some(Scope::Project),
+                KeyCode::Char('G') => Some(Scope::Global),
+                _ => None,
+            };
+            if let Some(scope) = scope {
+                self.overlay = Overlay::Picker(picker);
+                self.set_scope(scope);
+                return Action::None;
+            }
+        }
+
+        if matches!(picker, Picker::Registry(_)) && matches!(key.code, KeyCode::Char('c' | 'A')) {
             self.open_custom_tool();
             return Action::None;
         }
 
         match key.code {
-            KeyCode::Esc | KeyCode::Char('q') => Action::None,
+            KeyCode::Char('q') => Action::None,
+            KeyCode::Esc => {
+                if let Picker::Backends { registry, .. } = picker {
+                    self.overlay = Overlay::Picker(Picker::Registry(registry));
+                }
+                Action::None
+            }
+            KeyCode::Tab if matches!(picker, Picker::Registry(_)) => {
+                if let Picker::Registry(state) = &mut picker {
+                    cycle_registry_filter(state, 1);
+                }
+                self.overlay = Overlay::Picker(picker);
+                Action::None
+            }
+            KeyCode::BackTab if matches!(picker, Picker::Registry(_)) => {
+                if let Picker::Registry(state) = &mut picker {
+                    cycle_registry_filter(state, -1);
+                }
+                self.overlay = Overlay::Picker(picker);
+                Action::None
+            }
             KeyCode::Char('/') => {
-                set_picker_searching(picker, true);
-                self.overlay = Overlay::Picker(picker.clone());
+                set_picker_searching(&mut picker, true);
+                self.overlay = Overlay::Picker(picker);
                 Action::None
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                move_picker(picker, 1);
-                self.overlay = Overlay::Picker(picker.clone());
+                move_picker(&mut picker, 1);
+                self.overlay = Overlay::Picker(picker);
                 Action::None
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                move_picker(picker, -1);
-                self.overlay = Overlay::Picker(picker.clone());
+                move_picker(&mut picker, -1);
+                self.overlay = Overlay::Picker(picker);
                 Action::None
             }
-            KeyCode::Enter => self.choose_picker_item(picker),
+            KeyCode::Enter => self.choose_picker_item(&picker),
             _ => {
-                self.overlay = Overlay::Picker(picker.clone());
+                self.overlay = Overlay::Picker(picker);
                 Action::None
             }
         }
     }
+
     fn handle_custom_tool_key(&mut self, key: KeyEvent, mut input: String) -> Action {
         match key.code {
             KeyCode::Esc => Action::None,
             KeyCode::Backspace => {
                 input.pop();
                 self.overlay = Overlay::CustomTool { input };
+                Action::None
+            }
+            KeyCode::Tab => {
+                let scope = match self.scope {
+                    Scope::Project => Scope::Global,
+                    Scope::Global => Scope::Project,
+                };
+                self.overlay = Overlay::CustomTool { input };
+                self.set_scope(scope);
                 Action::None
             }
             KeyCode::Enter => {
@@ -942,6 +1084,7 @@ impl App {
                     self.overlay = Overlay::CustomTool { input };
                     return Action::None;
                 };
+                self.overlay = Overlay::CustomTool { input };
                 self.open_versions(&tool, VersionIntent::Add);
                 Action::None
             }
@@ -963,20 +1106,45 @@ impl App {
 
     fn choose_picker_item(&mut self, picker: &Picker) -> Action {
         match picker {
-            Picker::Registry {
-                items,
+            Picker::Registry(state) => {
+                let filter = active_registry_filter(state);
+                let item = state
+                    .items
+                    .iter()
+                    .filter(|item| registry_matches(item, &state.query, filter))
+                    .nth(state.selected);
+                if let Some(item) = item {
+                    match registry_choice(item, filter) {
+                        RegistryChoice::Lookup(tool) => {
+                            self.overlay = Overlay::Picker(picker.clone());
+                            self.open_versions(&tool, VersionIntent::Add);
+                        }
+                        RegistryChoice::ChooseBackend { selected } => {
+                            self.overlay = Overlay::Picker(Picker::Backends {
+                                registry: state.clone(),
+                                tool: item.clone(),
+                                selected,
+                                query: String::new(),
+                                searching: false,
+                            });
+                        }
+                    }
+                } else if let Some(tool) = custom_backend_query(&state.query) {
+                    self.overlay = Overlay::Picker(picker.clone());
+                    self.open_versions(&tool, VersionIntent::Add);
+                }
+                Action::None
+            }
+            Picker::Backends {
+                tool,
                 selected,
                 query,
                 ..
             } => {
-                let tool = items
-                    .iter()
-                    .filter(|item| registry_matches(item, query))
-                    .nth(*selected)
-                    .map(|item| item.name.clone())
-                    .or_else(|| custom_backend_query(query));
-                if let Some(tool) = tool {
-                    self.open_versions(&tool, VersionIntent::Add);
+                let backend = selected_backend(tool, query, *selected);
+                if let Some(backend) = backend {
+                    self.overlay = Overlay::Picker(picker.clone());
+                    self.open_versions(&backend, VersionIntent::Add);
                 }
                 Action::None
             }
@@ -1062,6 +1230,7 @@ impl App {
                         spec,
                         arguments: String::new(),
                         help,
+                        help_viewport: HelpViewport::default(),
                     };
                 }
                 Err(error) => {
@@ -1081,12 +1250,15 @@ impl App {
             .into();
         match mise::registry() {
             Ok(items) => {
-                self.overlay = Overlay::Picker(Picker::Registry {
+                let filters = backend_filters(&items);
+                self.overlay = Overlay::Picker(Picker::Registry(RegistryPickerState {
                     items,
+                    filters,
+                    filter_index: 0,
                     selected: 0,
                     query: String::new(),
                     searching: false,
-                });
+                }));
                 self.status = self.locale.text("Ready", "就绪").into();
             }
             Err(error) => {
@@ -1319,18 +1491,156 @@ fn command_belongs_to_page(page: Page, command: &str) -> bool {
     commands_for_page(page).contains(&command)
 }
 
+fn help_line_count(help: &str) -> usize {
+    help.lines().count().max(1)
+}
+
+fn help_column_count(help: &str) -> usize {
+    help.lines()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or(0)
+        .max(1)
+}
+
+fn move_cursor(current: usize, delta: isize, len: usize) -> usize {
+    current
+        .saturating_add_signed(delta)
+        .min(len.saturating_sub(1))
+}
+
 fn contains_case_insensitive(value: &str, query: &str) -> bool {
     value.to_lowercase().contains(&query.to_lowercase())
 }
-pub(crate) fn registry_matches(item: &RegistryTool, query: &str) -> bool {
-    query.split_whitespace().all(|term| {
+pub(crate) fn backend_prefix(spec: &str) -> &str {
+    spec.split_once(':').map_or(spec, |(prefix, _)| prefix)
+}
+
+fn backend_filters(items: &[RegistryTool]) -> Vec<BackendFilter> {
+    const PREFERRED: [&str; 9] = [
+        "core", "github", "npm", "cargo", "go", "aqua", "asdf", "vfox", "pipx",
+    ];
+
+    let mut spellings = Vec::<(String, String)>::new();
+    let mut seen = HashSet::new();
+    for backend in items.iter().flat_map(|item| &item.backends) {
+        let prefix = backend_prefix(backend);
+        if prefix.is_empty() {
+            continue;
+        }
+        let normalized = prefix.to_lowercase();
+        if seen.insert(normalized.clone()) {
+            spellings.push((normalized, prefix.to_owned()));
+        }
+    }
+
+    let mut filters = vec![BackendFilter::All];
+    for prefix in PREFERRED {
+        if seen.contains(prefix) {
+            filters.push(BackendFilter::Prefix(prefix.into()));
+        }
+    }
+    spellings.retain(|(normalized, _)| !PREFERRED.contains(&normalized.as_str()));
+    spellings.sort_by(|(left, _), (right, _)| left.cmp(right));
+    filters.extend(
+        spellings
+            .into_iter()
+            .map(|(normalized, _)| BackendFilter::Prefix(normalized)),
+    );
+    filters
+}
+
+pub(crate) fn backend_filter_label(filter: &BackendFilter, items: &[RegistryTool]) -> String {
+    let BackendFilter::Prefix(prefix) = filter else {
+        return "All".into();
+    };
+    let known = match prefix.as_str() {
+        "core" => Some("Core"),
+        "github" => Some("GitHub"),
+        "npm" => Some("npm"),
+        "cargo" => Some("Cargo"),
+        "go" => Some("Go"),
+        "aqua" => Some("Aqua"),
+        "asdf" => Some("asdf"),
+        "vfox" => Some("vfox"),
+        "pipx" => Some("pipx"),
+        _ => None,
+    };
+    known.map(str::to_owned).unwrap_or_else(|| {
+        items
+            .iter()
+            .flat_map(|item| &item.backends)
+            .map(|backend| backend_prefix(backend))
+            .find(|candidate| candidate.eq_ignore_ascii_case(prefix))
+            .unwrap_or(prefix)
+            .to_owned()
+    })
+}
+
+pub(crate) fn active_registry_filter(state: &RegistryPickerState) -> &BackendFilter {
+    state
+        .filters
+        .get(state.filter_index)
+        .unwrap_or(&BackendFilter::All)
+}
+
+pub(crate) fn registry_matches(item: &RegistryTool, query: &str, filter: &BackendFilter) -> bool {
+    let matches_query = query.split_whitespace().all(|term| {
         contains_case_insensitive(&item.name, term)
             || contains_case_insensitive(&item.description, term)
             || item
                 .backends
                 .iter()
                 .any(|backend| contains_case_insensitive(backend, term))
-    })
+    });
+    let matches_filter = match filter {
+        BackendFilter::All => true,
+        BackendFilter::Prefix(prefix) => item
+            .backends
+            .iter()
+            .any(|backend| backend_prefix(backend).eq_ignore_ascii_case(prefix)),
+    };
+    matches_query && matches_filter
+}
+
+fn backend_matches(backend: &str, query: &str) -> bool {
+    query.is_empty() || contains_case_insensitive(backend, query)
+}
+
+fn selected_backend(tool: &RegistryTool, query: &str, selected: usize) -> Option<String> {
+    tool.backends
+        .iter()
+        .filter(|backend| backend_matches(backend, query))
+        .nth(selected)
+        .cloned()
+}
+
+fn cycle_registry_filter(state: &mut RegistryPickerState, delta: isize) {
+    state.filter_index = move_index(state.filter_index, delta, state.filters.len());
+    state.selected = 0;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum RegistryChoice {
+    Lookup(String),
+    ChooseBackend { selected: usize },
+}
+
+fn registry_choice(item: &RegistryTool, filter: &BackendFilter) -> RegistryChoice {
+    match item.backends.as_slice() {
+        [] => RegistryChoice::Lookup(item.name.clone()),
+        [backend] => RegistryChoice::Lookup(backend.clone()),
+        backends => {
+            let selected = match filter {
+                BackendFilter::All => 0,
+                BackendFilter::Prefix(prefix) => backends
+                    .iter()
+                    .position(|backend| backend_prefix(backend).eq_ignore_ascii_case(prefix))
+                    .unwrap_or(0),
+            };
+            RegistryChoice::ChooseBackend { selected }
+        }
+    }
 }
 
 fn version_matches(item: &RemoteVersion, query: &str) -> bool {
@@ -1364,13 +1674,15 @@ pub(crate) fn custom_backend_query(query: &str) -> Option<String> {
 
 fn picker_query_mut(picker: &mut Picker) -> &mut String {
     match picker {
-        Picker::Registry { query, .. } | Picker::Versions { query, .. } => query,
+        Picker::Registry(state) => &mut state.query,
+        Picker::Backends { query, .. } | Picker::Versions { query, .. } => query,
     }
 }
 
 fn set_picker_searching(picker: &mut Picker, value: bool) {
     match picker {
-        Picker::Registry { searching, .. } | Picker::Versions { searching, .. } => {
+        Picker::Registry(state) => state.searching = value,
+        Picker::Backends { searching, .. } | Picker::Versions { searching, .. } => {
             *searching = value;
         }
     }
@@ -1378,7 +1690,8 @@ fn set_picker_searching(picker: &mut Picker, value: bool) {
 
 fn set_picker_selected(picker: &mut Picker, value: usize) {
     match picker {
-        Picker::Registry { selected, .. } | Picker::Versions { selected, .. } => {
+        Picker::Registry(state) => state.selected = value,
+        Picker::Backends { selected, .. } | Picker::Versions { selected, .. } => {
             *selected = value;
         }
     }
@@ -1506,6 +1819,242 @@ mod tests {
         KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE)
     }
 
+    fn registry_tool(name: &str, description: &str, backends: &[&str]) -> RegistryTool {
+        RegistryTool {
+            name: name.into(),
+            description: description.into(),
+            backends: backends.iter().map(|backend| (*backend).into()).collect(),
+        }
+    }
+
+    fn registry_state(items: Vec<RegistryTool>) -> RegistryPickerState {
+        RegistryPickerState {
+            filters: backend_filters(&items),
+            items,
+            filter_index: 0,
+            selected: 0,
+            query: String::new(),
+            searching: false,
+        }
+    }
+
+    #[test]
+    fn backend_filters_are_dynamic_normalized_and_preferred() {
+        let items = vec![registry_tool(
+            "example",
+            "",
+            &[
+                "vfox:example",
+                "CustomCase:example",
+                "NPM:example",
+                "pipx:example",
+                "core:example",
+                "github:owner/example",
+                "go:example",
+                "asdf:example",
+                "cargo:example",
+                "aqua:example",
+                "npm:duplicate",
+            ],
+        )];
+
+        assert_eq!(
+            backend_filters(&items),
+            vec![
+                BackendFilter::All,
+                BackendFilter::Prefix("core".into()),
+                BackendFilter::Prefix("github".into()),
+                BackendFilter::Prefix("npm".into()),
+                BackendFilter::Prefix("cargo".into()),
+                BackendFilter::Prefix("go".into()),
+                BackendFilter::Prefix("aqua".into()),
+                BackendFilter::Prefix("asdf".into()),
+                BackendFilter::Prefix("vfox".into()),
+                BackendFilter::Prefix("pipx".into()),
+                BackendFilter::Prefix("customcase".into()),
+            ]
+        );
+        assert_eq!(
+            backend_filter_label(&BackendFilter::Prefix("customcase".into()), &items),
+            "CustomCase"
+        );
+        assert_eq!(backend_prefix("MalformedSource"), "MalformedSource");
+        assert_eq!(items[0].backends[2], "NPM:example");
+    }
+
+    #[test]
+    fn every_present_backend_filter_combines_with_text_search() {
+        let prefixes = [
+            "npm", "github", "go", "cargo", "aqua", "asdf", "vfox", "pipx", "odd",
+        ];
+        for prefix in prefixes {
+            let item = registry_tool(
+                "formatter",
+                "Fast code formatter",
+                &[&format!("{prefix}:owner/tool")],
+            );
+            let filter = BackendFilter::Prefix(prefix.into());
+            assert!(registry_matches(&item, "fast formatter", &filter));
+            assert!(!registry_matches(&item, "missing", &filter));
+            assert!(!registry_matches(
+                &item,
+                "formatter",
+                &BackendFilter::Prefix("different".into())
+            ));
+        }
+    }
+
+    #[test]
+    fn registry_filter_cycling_wraps_and_preserves_query() {
+        let mut state = registry_state(vec![registry_tool(
+            "example",
+            "",
+            &["github:owner/example", "npm:example"],
+        )]);
+        state.query = "no matches".into();
+        state.selected = 4;
+
+        cycle_registry_filter(&mut state, -1);
+        assert_eq!(state.filter_index, state.filters.len() - 1);
+        assert_eq!(state.query, "no matches");
+        assert_eq!(state.selected, 0);
+        assert_eq!(Picker::Registry(state.clone()).visible_len(), 0);
+
+        cycle_registry_filter(&mut state, 1);
+        assert_eq!(state.filter_index, 0);
+        assert_eq!(state.query, "no matches");
+        assert_eq!(state.selected, 0);
+    }
+
+    #[test]
+    fn registry_choice_requires_only_ambiguous_tools_to_choose() {
+        assert_eq!(
+            registry_choice(&registry_tool("node", "", &[]), &BackendFilter::All),
+            RegistryChoice::Lookup("node".into())
+        );
+        assert_eq!(
+            registry_choice(
+                &registry_tool("prettier", "", &["npm:prettier"]),
+                &BackendFilter::All
+            ),
+            RegistryChoice::Lookup("npm:prettier".into())
+        );
+        assert_eq!(
+            registry_choice(
+                &registry_tool(
+                    "actionlint",
+                    "",
+                    &[
+                        "aqua:rhysd/actionlint",
+                        "asdf:plugin",
+                        "go:github.com/rhysd/actionlint"
+                    ]
+                ),
+                &BackendFilter::Prefix("go".into())
+            ),
+            RegistryChoice::ChooseBackend { selected: 2 }
+        );
+    }
+
+    #[test]
+    fn multi_backend_picker_exposes_all_sources_and_esc_restores_registry() {
+        let tool = registry_tool(
+            "actionlint",
+            "Workflow linter",
+            &[
+                "aqua:rhysd/actionlint",
+                "asdf:plugin",
+                "go:github.com/rhysd/actionlint",
+            ],
+        );
+        let mut state = registry_state(vec![tool.clone()]);
+        state.filter_index = state
+            .filters
+            .iter()
+            .position(|filter| filter == &BackendFilter::Prefix("go".into()))
+            .unwrap();
+        state.query = "action".into();
+        state.selected = 0;
+        let expected = state.clone();
+        let mut app = app();
+
+        assert_eq!(
+            app.choose_picker_item(&Picker::Registry(state)),
+            Action::None
+        );
+        assert!(matches!(
+            &app.overlay,
+            Overlay::Picker(Picker::Backends {
+                tool,
+                selected: 2,
+                ..
+            }) if tool.backends.len() == 3
+        ));
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(
+            &app.overlay,
+            Overlay::Picker(Picker::Registry(restored)) if restored == &expected
+        ));
+    }
+
+    #[test]
+    fn backend_search_selection_uses_visible_source_index() {
+        let tool = registry_tool(
+            "example",
+            "",
+            &["aqua:first", "github:owner/example", "aqua:second"],
+        );
+        assert_eq!(
+            selected_backend(&tool, "aqua", 1),
+            Some("aqua:second".into())
+        );
+        assert_eq!(selected_backend(&tool, "missing", 0), None);
+    }
+
+    #[test]
+    fn backend_qualified_tools_survive_version_actions() {
+        let mut app = app();
+        let versions = vec![RemoteVersion {
+            version: "1.2.3".into(),
+            created_at: String::new(),
+        }];
+        let tool = "go:github.com/rhysd/actionlint";
+
+        let add = Picker::Versions {
+            tool: tool.into(),
+            items: versions.clone(),
+            selected: 0,
+            query: String::new(),
+            searching: false,
+            intent: VersionIntent::Add,
+        };
+        assert_eq!(
+            app.choose_picker_item(&add),
+            Action::UseVersion {
+                tool: tool.into(),
+                version: "1.2.3".into(),
+                scope: Scope::Project,
+            }
+        );
+
+        let install = Picker::Versions {
+            tool: tool.into(),
+            items: versions,
+            selected: 0,
+            query: String::new(),
+            searching: false,
+            intent: VersionIntent::Install,
+        };
+        assert_eq!(
+            app.choose_picker_item(&install),
+            Action::InstallVersion {
+                tool: tool.into(),
+                version: "1.2.3".into(),
+            }
+        );
+    }
+
     #[test]
     fn hjkl_moves_across_all_three_panels() {
         let mut app = app();
@@ -1565,6 +2114,61 @@ mod tests {
         assert_eq!(app.scope, Scope::Global);
         app.handle_key(key('p'));
         assert_eq!(app.scope, Scope::Project);
+    }
+
+    #[test]
+    fn scope_keys_work_throughout_add_picker_flow() {
+        let mut app = app();
+        app.overlay = Overlay::Picker(Picker::Registry(registry_state(vec![registry_tool(
+            "node",
+            "",
+            &["core:node"],
+        )])));
+
+        assert_eq!(app.handle_key(key('G')), Action::None);
+        assert_eq!(app.scope, Scope::Global);
+        assert!(matches!(app.overlay, Overlay::Picker(Picker::Registry(_))));
+
+        assert_eq!(app.handle_key(key('p')), Action::None);
+        assert_eq!(app.scope, Scope::Project);
+        assert!(matches!(app.overlay, Overlay::Picker(Picker::Registry(_))));
+    }
+
+    #[test]
+    fn scope_shortcuts_do_not_capture_picker_search_text() {
+        let mut app = app();
+        let mut state = registry_state(Vec::new());
+        state.searching = true;
+        app.overlay = Overlay::Picker(Picker::Registry(state));
+
+        assert_eq!(app.handle_key(key('G')), Action::None);
+        assert_eq!(app.scope, Scope::Project);
+        assert!(matches!(
+            app.overlay,
+            Overlay::Picker(Picker::Registry(RegistryPickerState {
+                ref query,
+                searching: true,
+                ..
+            })) if query == "G"
+        ));
+    }
+
+    #[test]
+    fn custom_tool_tab_switches_scope_without_losing_input() {
+        let mut app = app();
+        app.overlay = Overlay::CustomTool {
+            input: "github:owner/tool".into(),
+        };
+
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)),
+            Action::None
+        );
+        assert_eq!(app.scope, Scope::Global);
+        assert!(matches!(
+            app.overlay,
+            Overlay::CustomTool { ref input } if input == "github:owner/tool"
+        ));
     }
 
     #[test]
@@ -1635,9 +2239,17 @@ mod tests {
             backends: vec!["github:owner/example".into(), "cargo:example".into()],
         };
 
-        assert!(registry_matches(&tool, "github:owner"));
-        assert!(registry_matches(&tool, "formatter github"));
-        assert!(!registry_matches(&tool, "formatter npm"));
+        assert!(registry_matches(&tool, "github:owner", &BackendFilter::All));
+        assert!(registry_matches(
+            &tool,
+            "formatter github",
+            &BackendFilter::All
+        ));
+        assert!(!registry_matches(
+            &tool,
+            "formatter npm",
+            &BackendFilter::All
+        ));
         assert_eq!(
             custom_backend_query("github:jorgerojas26/lazysql"),
             Some("github:jorgerojas26/lazysql".into())
@@ -1668,6 +2280,7 @@ mod tests {
             },
             "-- node -e 'console.log(1)'".into(),
             String::new(),
+            HelpViewport::default(),
         );
 
         assert_eq!(
@@ -1693,12 +2306,56 @@ mod tests {
             },
             String::new(),
             String::new(),
+            HelpViewport::default(),
         );
 
         assert_eq!(action, Action::None);
         assert!(matches!(
             app.overlay,
             Overlay::ConfirmCommand { ref args } if args == &["implode"]
+        ));
+    }
+
+    #[test]
+    fn command_builder_scroll_mode_preserves_arguments_and_moves_help_cursor() {
+        let mut app = app();
+        app.overlay = Overlay::CommandBuilder {
+            spec: CommandSpec {
+                name: "help".into(),
+                description: String::new(),
+            },
+            arguments: "--verbose".into(),
+            help: "short\nthis is a much longer help line\nlast".into(),
+            help_viewport: HelpViewport::default(),
+        };
+
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        app.handle_key(key('j'));
+        app.handle_key(key('l'));
+
+        assert!(matches!(
+            &app.overlay,
+            Overlay::CommandBuilder {
+                arguments,
+                help_viewport:
+                    HelpViewport {
+                        focused: true,
+                        line: 1,
+                        column: 1,
+                    },
+                ..
+            } if arguments == "--verbose"
+        ));
+
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        app.handle_key(key('j'));
+        assert!(matches!(
+            &app.overlay,
+            Overlay::CommandBuilder {
+                arguments,
+                help_viewport: HelpViewport { focused: false, .. },
+                ..
+            } if arguments == "--verbosej"
         ));
     }
 
