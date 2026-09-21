@@ -10,7 +10,16 @@ export default antfu({
 }, {
   files: ['src/**/*.js'],
   rules: {
-    // Managed paths and terminal text must explicitly reject or strip control bytes.
     'no-control-regex': 'off',
+    'node/prefer-global/process': 'off',
+    'antfu/no-top-level-await': 'off',
+    'no-undef': 'off',
+    'style/max-statements-per-line': 'off',
+  },
+  languageOptions: {
+    globals: {
+      Bun: 'readonly',
+      process: 'readonly',
+    },
   },
 })
