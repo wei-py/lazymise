@@ -29,18 +29,14 @@ jobs:
             target: bun-linux-x64
             asset: linux-x86_64
             archive: tar.gz
-          - os: macos-13
-            target: bun-darwin-x64
-            asset: macos-x86_64
-            archive: tar.gz
           - os: macos-15
             target: bun-darwin-arm64
             asset: macos-aarch64
             archive: tar.gz
-          - os: windows-latest
-            target: bun-windows-x64
-            asset: windows-x86_64
-            archive: zip
+          # - os: windows-latest
+          #   target: bun-windows-x64
+          #   asset: windows-x86_64
+          #   archive: zip
     runs-on: ${{ matrix.os }}
 
     steps:
