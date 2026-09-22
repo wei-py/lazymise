@@ -99,25 +99,25 @@ const EN = {
   'config_target_input': 'Enter configuration path…',
   'config_target_unsupported': 'Not a write target',
   'config_target_wait': 'Wait until loading finishes to select configuration',
-  'config_target_list_hint': 'Enter select  / search  r refresh  Esc/q back',
-  'config_target_path_hint': 'Enter select  Ctrl+u clear  Esc back',
+  'config_target_list_hint': ['Enter|select', '/|search', 'r|refresh', 'Esc/q|back'],
+  'config_target_path_hint': ['Enter|select', 'Ctrl+u|clear', 'Esc|back'],
   'install_only_hint': 'Install only — no config changes',
   'operation_not_target': 'This operation is not an edit to the selected config target.',
   'upgrade_visible': 'all filtered tools',
   'upgrade_marked': 'marked tools',
   'upgrade_current': 'current tool',
   'unknown_error': 'Unknown error',
-  'navigation_hint': 'j/k page  Enter list  1–0 jump  F2 config',
-  'details_hint': 'j/k Ctrl+d/u Home/End scroll  Esc list',
-  'text_search_hint': 'Enter accept  Esc restore  Ctrl+u clear',
-  'custom_tool_hint': 'Enter use  F2 config  Ctrl+u clear  Esc back',
-  'builder_input_hint': 'Enter run  Tab help  Ctrl+u clear  Esc back',
-  'builder_help_hint': 'j/k scroll  r retry  Tab/Esc/q input',
-  'palette_hint': 'Enter open  / search  Esc/q back',
-  'loading_hint': 'Loading…  Esc/q back  Ctrl+c cancel',
-  'registry_hint': 'Enter select  / search  Tab filter  F2 config  Esc/q back',
-  'picker_hint': 'Enter use/select  F2 config  r retry  Esc/q back',
-  'install_hint': 'Enter install  r retry  Esc/q back',
+  'navigation_hint': ['j/k|page', 'Enter|list', '1–0|jump', 'F2|config'],
+  'details_hint': ['j/k Ctrl+d/u Home/End|scroll', 'Esc|list'],
+  'text_search_hint': ['Enter|accept', 'Esc|restore', 'Ctrl+u|clear'],
+  'custom_tool_hint': ['Enter|use', 'F2|config', 'Ctrl+u|clear', 'Esc|back'],
+  'builder_input_hint': ['Enter|run', 'Tab|help', 'Ctrl+u|clear', 'Esc|back'],
+  'builder_help_hint': ['j/k|scroll', 'r|retry', 'Tab/Esc/q|input'],
+  'palette_hint': ['Enter|open', '/|search', 'Esc/q|back'],
+  'loading_hint': ['Loading…|', 'Esc/q|back', 'Ctrl+c|cancel'],
+  'registry_hint': ['Enter|select', '/|search', 'Tab|filter', 'F2|config', 'Esc/q|back'],
+  'picker_hint': ['Enter|use/select', 'F2|config', 'r|retry', 'Esc/q|back'],
+  'install_hint': ['Enter|install', 'r|retry', 'Esc/q|back'],
   'preferences_title': 'Language · Theme',
   'press_enter_toggle': 'Enter: toggle',
   'press_enter_run': 'Enter: run',
@@ -173,7 +173,7 @@ const EN = {
   'custom_tool_prompt': 'Input backend identifier:',
   'confirm_delete_title': 'Confirm Delete',
   'confirm_command_title': 'Confirm',
-  'confirm_prompt': 'Enter/y confirm  Esc/n/q cancel  j/k scroll',
+  'confirm_prompt': ['Enter/y|confirm', 'Esc/n/q|cancel', 'j/k|scroll'],
   'no_matching_commands': 'No matching commands',
   'picker_filter_label': '[{filter}] Search: {query}',
 
@@ -190,7 +190,7 @@ const EN = {
     'F2: configuration  /: search  :: expert commands  m: page commands  r: refresh  ?: help  q: quit  Ctrl+c: cancel flow',
   'help_config_line':
     'Config List Enter selects a file. Only guided Use writes to it via --path. Install, uninstall, upgrade, tasks and expert commands do not use this target.',
-  'help_scroll_hint': 'j/k scroll  Esc/q back',
+  'help_scroll_hint': ['j/k|scroll', 'Esc/q|back'],
 
   // ---- Detail ----
   'detail_tool': 'Tool',
@@ -210,16 +210,16 @@ const EN = {
   'detail_environment_hint': 'Esc to List, Enter opens command builder',
 
   // ---- Page hints ----
-  'dashboard_hint': 'm page commands  a add  F2 config  r refresh',
-  'tools_hint': 'Enter/v use  i install  d uninstall  a add  F2 config',
-  'updates_hint': 'Space mark  Enter/u marked/current  U filtered',
-  'tasks_hint': 'Enter run (not target config)  r refresh',
-  'environment_hint': 'Enter open  m page commands  r refresh',
-  'config_hint': 'Enter set target  e edit  y copy  F2 select  r refresh',
-  'console_hint': 'Enter output  d dismiss done  / search',
-  'system_hint': 'Enter open  m page commands  r refresh',
-  'preferences_hint': 'j/k select  Enter apply',
-  'logs_hint': 'Enter output  / search',
+  'dashboard_hint': ['m|page commands', 'a|add', 'F2|config', 'r|refresh'],
+  'tools_hint': ['Enter/v|use', 'i|install', 'd|uninstall', 'a|add', 'F2|config'],
+  'updates_hint': ['Space|mark', 'Enter/u|marked/current', 'U|filtered'],
+  'tasks_hint': ['Enter|run (not target config)', 'r|refresh'],
+  'environment_hint': ['Enter|open', 'm|page commands', 'r|refresh'],
+  'config_hint': ['Enter|set target', 'e|edit', 'y|copy', 'F2|select', 'r|refresh'],
+  'console_hint': ['Enter|output', 'd|dismiss done', '/|search'],
+  'system_hint': ['Enter|open', 'm|page commands', 'r|refresh'],
+  'preferences_hint': ['j/k|select', 'Enter|apply'],
+  'logs_hint': ['Enter|output', '/|search'],
 
   // ---- Page names (used directly as t() keys) ----
   'Dashboard': 'Dashboard',
@@ -351,25 +351,25 @@ const ZH = {
   'config_target_input': '输入配置文件路径…',
   'config_target_unsupported': '不可作为写入目标',
   'config_target_wait': '等待加载完成后选择配置',
-  'config_target_list_hint': 'Enter 选择  / 搜索  r 刷新  Esc/q 返回',
-  'config_target_path_hint': 'Enter 选择  Ctrl+u 清空  Esc 返回',
+  'config_target_list_hint': ['Enter|选择', '/|搜索', 'r|刷新', 'Esc/q|返回'],
+  'config_target_path_hint': ['Enter|选择', 'Ctrl+u|清空', 'Esc|返回'],
   'install_only_hint': '仅安装，不修改配置',
   'operation_not_target': '此操作不是对所选配置目标的编辑。',
   'upgrade_visible': '当前过滤结果全部',
   'upgrade_marked': '已标记工具',
   'upgrade_current': '当前工具',
   'unknown_error': '未知错误',
-  'navigation_hint': 'j/k 选页  Enter 列表  1–0 跳页  F2 配置',
-  'details_hint': 'j/k Ctrl+d/u Home/End 滚动  Esc 列表',
-  'text_search_hint': 'Enter 接受  Esc 恢复  Ctrl+u 清空',
-  'custom_tool_hint': 'Enter 使用  F2 配置  Ctrl+u 清空  Esc 返回',
-  'builder_input_hint': 'Enter 执行  Tab 帮助  Ctrl+u 清空  Esc 返回',
-  'builder_help_hint': 'j/k 滚动  r 重试  Tab/Esc/q 输入',
-  'palette_hint': 'Enter 打开  / 搜索  Esc/q 返回',
-  'loading_hint': '加载中…  Esc/q 返回  Ctrl+c 取消流程',
-  'registry_hint': 'Enter 选择  / 搜索  Tab 过滤  F2 配置  Esc/q 返回',
-  'picker_hint': 'Enter 使用/选择  F2 配置  r 重试  Esc/q 返回',
-  'install_hint': 'Enter 安装  r 重试  Esc/q 返回',
+  'navigation_hint': ['j/k|选页', 'Enter|列表', '1–0|跳页', 'F2|配置'],
+  'details_hint': ['j/k Ctrl+d/u Home/End|滚动', 'Esc|列表'],
+  'text_search_hint': ['Enter|接受', 'Esc|恢复', 'Ctrl+u|清空'],
+  'custom_tool_hint': ['Enter|使用', 'F2|配置', 'Ctrl+u|清空', 'Esc|返回'],
+  'builder_input_hint': ['Enter|执行', 'Tab|帮助', 'Ctrl+u|清空', 'Esc|返回'],
+  'builder_help_hint': ['j/k|滚动', 'r|重试', 'Tab/Esc/q|输入'],
+  'palette_hint': ['Enter|打开', '/|搜索', 'Esc/q|返回'],
+  'loading_hint': ['加载中…|', 'Esc/q|返回', 'Ctrl+c|取消流程'],
+  'registry_hint': ['Enter|选择', '/|搜索', 'Tab|过滤', 'F2|配置', 'Esc/q|返回'],
+  'picker_hint': ['Enter|使用/选择', 'F2|配置', 'r|重试', 'Esc/q|返回'],
+  'install_hint': ['Enter|安装', 'r|重试', 'Esc/q|返回'],
   'preferences_title': '语言 · 主题',
   'press_enter_toggle': 'Enter: 切换',
   'press_enter_run': 'Enter: 运行',
@@ -425,7 +425,7 @@ const ZH = {
   'custom_tool_prompt': '输入后端标识：',
   'confirm_delete_title': '确认删除',
   'confirm_command_title': '确认',
-  'confirm_prompt': 'Enter/y 确认  Esc/n/q 取消  j/k 滚动',
+  'confirm_prompt': ['Enter/y|确认', 'Esc/n/q|取消', 'j/k|滚动'],
   'no_matching_commands': '无匹配命令',
   'picker_filter_label': '[{filter}] 搜索：{query}',
 
@@ -440,7 +440,7 @@ const ZH = {
     'F2：配置文件  /：搜索  :: 专家命令  m：页面命令  r：刷新  ?：帮助  q：退出  Ctrl+c：取消流程',
   'help_config_line':
     '配置列表 Enter 选择文件。仅引导使用版本操作通过 --path 写入该文件；安装、卸载、升级、任务和专家命令不使用此目标。',
-  'help_scroll_hint': 'j/k 滚动  Esc/q 返回',
+  'help_scroll_hint': ['j/k|滚动', 'Esc/q|返回'],
 
   // ---- Detail ----
   'detail_tool': '工具',
@@ -460,16 +460,16 @@ const ZH = {
   'detail_environment_hint': 'Esc 回列表，Enter 打开命令构建器',
 
   // ---- Page hints ----
-  'dashboard_hint': 'm 页面命令  a 添加  F2 配置  r 刷新',
-  'tools_hint': 'Enter/v 使用  i 安装  d 卸载  a 添加  F2 配置',
-  'updates_hint': 'Space 标记  Enter/u 已标记或当前项  U 过滤结果',
-  'tasks_hint': 'Enter 执行（不依赖配置目标）  r 刷新',
-  'environment_hint': 'Enter 打开  m 页面命令  r 刷新',
-  'config_hint': 'Enter 设目标  e 编辑  y 复制  F2 选择  r 刷新',
-  'console_hint': 'Enter 输出  d 关闭已完成  / 搜索',
-  'system_hint': 'Enter 打开  m 页面命令  r 刷新',
-  'preferences_hint': 'j/k 选择  Enter 应用',
-  'logs_hint': 'Enter 输出  / 搜索',
+  'dashboard_hint': ['m|页面命令', 'a|添加', 'F2|配置', 'r|刷新'],
+  'tools_hint': ['Enter/v|使用', 'i|安装', 'd|卸载', 'a|添加', 'F2|配置'],
+  'updates_hint': ['Space|标记', 'Enter/u|已标记或当前项', 'U|过滤结果'],
+  'tasks_hint': ['Enter|执行（不依赖配置目标）', 'r|刷新'],
+  'environment_hint': ['Enter|打开', 'm|页面命令', 'r|刷新'],
+  'config_hint': ['Enter|设目标', 'e|编辑', 'y|复制', 'F2|选择', 'r|刷新'],
+  'console_hint': ['Enter|输出', 'd|关闭已完成', '/|搜索'],
+  'system_hint': ['Enter|打开', 'm|页面命令', 'r|刷新'],
+  'preferences_hint': ['j/k|选择', 'Enter|应用'],
+  'logs_hint': ['Enter|输出', '/|搜索'],
 
   // ---- Page names (used directly as t() keys) ----
   'Dashboard': '仪表盘',
@@ -509,11 +509,38 @@ const ZH = {
 
 const TRANSLATIONS = { en: EN, zh: ZH }
 
+function hintSegment(entry) {
+  const index = entry.indexOf('|')
+  return index < 0
+    ? { key: entry, desc: '' }
+    : { key: entry.slice(0, index), desc: entry.slice(index + 1) }
+}
+
+/** Structured `key`/`desc` chips for a hint key; string values become one chip. */
+export function hintSegments(language, key) {
+  const dict = TRANSLATIONS[language] || TRANSLATIONS.en
+  const value = dict[key]
+  if (value === undefined)
+    return [{ key, desc: '' }]
+  if (!Array.isArray(value))
+    return [{ key: value, desc: '' }]
+  return value.map(hintSegment)
+}
+
+/** Render segments back to the exact prose line `t()` produces for them. */
+export function hintLine(segments) {
+  return segments
+    .map(({ key, desc }) => (desc ? `${key} ${desc}` : key))
+    .join('  ·  ')
+}
+
 export function t(language, key, params) {
   const dict = TRANSLATIONS[language] || TRANSLATIONS.en
   let text = dict[key]
   if (text === undefined)
     text = key
+  if (Array.isArray(text))
+    text = hintLine(text.map(hintSegment))
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       text = text.replaceAll(`{${k}}`, String(v))

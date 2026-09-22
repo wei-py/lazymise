@@ -42,19 +42,6 @@ export const VERSION_INTENT = {
   Install: 'Install',
 }
 
-export const OVERLAY_TYPE = {
-  None: null,
-  Help: 'Help',
-  Search: 'Search',
-  Picker: 'Picker',
-  CommandPalette: 'CommandPalette',
-  CommandBuilder: 'CommandBuilder',
-  CustomTool: 'CustomTool',
-  ConfigTarget: 'ConfigTarget',
-  ConfirmDelete: 'ConfirmDelete',
-  ConfirmCommand: 'ConfirmCommand',
-}
-
 export function layoutMode(width, height) {
   if (width < 60 || height < 8)
     return 'small'
