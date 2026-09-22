@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { DEFAULT_THEME, isTheme } from './themes.js'
 
 function settingsDir() {
   if (process.env.LAZYMISE_CONFIG_DIR)
@@ -19,15 +20,16 @@ export function loadSettings() {
     const parsed = JSON.parse(raw)
     return {
       language: parsed.language === 'zh' ? 'zh' : 'en',
+      theme: isTheme(parsed.theme) ? parsed.theme : DEFAULT_THEME,
     }
   }
   catch {
-    return { language: 'en' }
+    return { language: 'en', theme: DEFAULT_THEME }
   }
 }
 
 export function saveSettings(settings) {
   const dir = settingsDir()
   mkdirSync(dir, { recursive: true })
-  writeFileSync(settingsPath(), JSON.stringify({ language: settings.language || 'en' }, null, 2))
+  writeFileSync(settingsPath(), JSON.stringify({ language: settings.language || 'en', theme: isTheme(settings.theme) ? settings.theme : DEFAULT_THEME }, null, 2))
 }

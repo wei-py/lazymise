@@ -116,7 +116,7 @@ const EN = {
   'registry_hint': 'Enter select  / search  Tab filter  F2 config  Esc/q back',
   'picker_hint': 'Enter use/select  F2 config  r retry  Esc/q back',
   'install_hint': 'Enter install  r retry  Esc/q back',
-  'preferences_language': 'Language',
+  'preferences_title': 'Language · Theme',
   'press_enter_toggle': 'Enter: toggle',
   'press_enter_run': 'Enter: run',
   'press_enter_view': 'Enter: view',
@@ -160,7 +160,8 @@ const EN = {
 
   // ---- Language ----
   'current_language': 'Language: {lang}',
-  'language_save_failed': 'Could not save language: {error}',
+  'current_theme': 'Theme: {theme}',
+  'preference_save_failed': 'Could not save preference: {error}',
 
   // ---- Overlay titles ----
   'help_title_full': 'LAZYMISE — mise TUI',
@@ -241,7 +242,7 @@ const EN = {
   'Path': 'Path',
   'Tools in config:': 'Tools in config:',
   '(inactive)': '(inactive)',
-  'apply_selected_language': 'Enter: apply selected language',
+  'apply_selected_setting': 'Enter: apply selected setting',
   'changes_persist': 'Changes persist automatically',
   'Command': 'Command',
   'Success': 'Success',
@@ -362,7 +363,7 @@ const ZH = {
   'registry_hint': 'Enter 选择  / 搜索  Tab 过滤  F2 配置  Esc/q 返回',
   'picker_hint': 'Enter 使用/选择  F2 配置  r 重试  Esc/q 返回',
   'install_hint': 'Enter 安装  r 重试  Esc/q 返回',
-  'preferences_language': '语言',
+  'preferences_title': '语言 · 主题',
   'press_enter_toggle': 'Enter: 切换',
   'press_enter_run': 'Enter: 运行',
   'press_enter_view': 'Enter: 查看',
@@ -406,7 +407,8 @@ const ZH = {
 
   // ---- Language ----
   'current_language': '语言：{lang}',
-  'language_save_failed': '保存语言失败：{error}',
+  'current_theme': '主题：{theme}',
+  'preference_save_failed': '保存设置失败：{error}',
 
   // ---- Overlay titles ----
   'help_title_full': 'LAZYMISE — mise TUI',
@@ -487,7 +489,7 @@ const ZH = {
   'Path': '路径',
   'Tools in config:': '配置中的工具：',
   '(inactive)': '(非活跃)',
-  'apply_selected_language': 'Enter：应用所选语言',
+  'apply_selected_setting': 'Enter：应用所选设置',
   'changes_persist': '更改自动保存',
   'Command': '命令',
   'Success': '成功',

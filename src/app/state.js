@@ -1,4 +1,6 @@
 import stringWidth from 'string-width'
+import { LANGUAGES } from '../config/i18n.js'
+import { THEMES } from '../config/themes.js'
 
 const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
 
@@ -61,6 +63,14 @@ export function layoutMode(width, height) {
   if (width >= 60)
     return 'single'
   return 'small'
+}
+
+/** Preferences list: languages first so their indexes stay stable, then theme palettes. */
+export function preferenceItems() {
+  return [
+    ...LANGUAGES.map(item => ({ kind: 'language', id: item.id, name: item.name })),
+    ...THEMES.map(theme => ({ kind: 'theme', id: theme.id, name: theme.name })),
+  ]
 }
 
 export function focusSeq() {

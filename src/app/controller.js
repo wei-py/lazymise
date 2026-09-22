@@ -2,8 +2,9 @@ import { spawnSync } from 'node:child_process'
 import { lstatSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
-import { LANGUAGES, t } from '../config/i18n.js'
+import { t } from '../config/i18n.js'
 import { loadSettings, saveSettings } from '../config/settings.js'
+import { DEFAULT_THEME } from '../config/themes.js'
 import {
   commandBelongsToPage,
   commandCatalog,
@@ -28,6 +29,7 @@ import {
   moveIndex,
   PAGE,
   PAGE_ORDER,
+  preferenceItems,
   supportsConfigTarget,
   VERSION_INTENT,
 } from './state.js'
@@ -47,6 +49,7 @@ export class Application {
       focus: FOCUS.Navigation,
       configTarget: null,
       language: 'en',
+      theme: DEFAULT_THEME,
       snapshot: { mise_version: '—', tools: [], updates: [], tasks: [], configs: [] },
       selected: 0,
       detailScroll: 0,
@@ -76,7 +79,9 @@ export class Application {
   }
 
   async start() {
-    this.state.language = loadSettings().language
+    const settings = loadSettings()
+    this.state.language = settings.language
+    this.state.theme = settings.theme
     this.update()
     const refreshed = await this.refresh()
     if (refreshed && !this.state.configTarget && !this.state.overlay) {
@@ -227,7 +232,7 @@ export class Application {
         break
       case PAGE.Preferences:
         if (name === 'enter')
-          this.applySelectedLanguage()
+          this.applySelectedPreference()
         break
       case PAGE.Console:
         if (name === 'd') {
@@ -1174,17 +1179,23 @@ export class Application {
       await this.#openCommandBuilder(command)
   }
 
-  applySelectedLanguage() {
+  applySelectedPreference() {
     const candidate = this.visibleItems()[this.state.selected]
-    if (!candidate || candidate.id === this.state.language)
+    if (!candidate || candidate.id === (candidate.kind === 'theme' ? this.state.theme : this.state.language))
       return
+    const settings = candidate.kind === 'theme'
+      ? { language: this.state.language, theme: candidate.id }
+      : { language: candidate.id, theme: this.state.theme }
     try {
-      saveSettings({ language: candidate.id })
-      this.state.language = candidate.id
-      this.state.status = t(candidate.id, 'current_language', { lang: candidate.name })
+      saveSettings(settings)
+      this.state.language = settings.language
+      this.state.theme = settings.theme
+      this.state.status = candidate.kind === 'theme'
+        ? t(settings.language, 'current_theme', { theme: candidate.name })
+        : t(settings.language, 'current_language', { lang: candidate.name })
     }
     catch (error) {
-      this.state.status = t(this.state.language, 'language_save_failed', { error: error.message || String(error) })
+      this.state.status = t(this.state.language, 'preference_save_failed', { error: error.message || String(error) })
     }
     this.update()
   }
@@ -1200,7 +1211,7 @@ export class Application {
     if (this.state.page !== page) {
       this.state.page = page
       this.state.selected = page === PAGE.Preferences
-        ? Math.max(0, LANGUAGES.findIndex(language => language.id === this.state.language))
+        ? Math.max(0, preferenceItems().findIndex(item => item.kind === 'language' && item.id === this.state.language))
         : 0
       this.state.detailScroll = 0
       this.state.search = ''
@@ -1303,7 +1314,7 @@ export class Application {
       case PAGE.Logs: return search ? this.state.logs.filter(item => matches(item.command, item.output)) : this.state.logs
       case PAGE.Environment:
       case PAGE.System: return filterCommands(commands.filter(item => commandBelongsToPage(page, item.name)), search)
-      case PAGE.Preferences: return LANGUAGES
+      case PAGE.Preferences: return preferenceItems()
       default: return []
     }
   }

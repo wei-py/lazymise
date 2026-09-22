@@ -1,24 +1,14 @@
 import { relative } from 'node:path'
 import { fg, StyledText, TextRenderable } from '@opentui/core'
 import stringWidth from 'string-width'
-import { LANGUAGES, t } from '../config/i18n.js'
-import { clipColumns, filterCommands, filterRegistryTools, FOCUS, layoutMode, PAGE_ORDER, supportsConfigTarget } from './state.js'
+import { t } from '../config/i18n.js'
+import { DEFAULT_THEME, themeColors, themeName } from '../config/themes.js'
+import { clipColumns, filterCommands, filterRegistryTools, FOCUS, layoutMode, PAGE_ORDER, preferenceItems, supportsConfigTarget } from './state.js'
 
 const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
 
-const COLORS = {
-  text: '#d4d4d4',
-  muted: '#999999',
-  warning: '#e5c07b',
-  error: '#e06c75',
-  present: '#87d787',
-  border: '#767676',
-  focus: '#00ffff',
-  background: '#101010',
-  selection: '#263238',
-  selectedItem: '#263238',
-  accent: '#00ffff',
-}
+// One view per process; each render swaps in the palette before drawing.
+let COLORS = themeColors(DEFAULT_THEME)
 
 const PANEL_IDS = ['nav', 'list', 'detail']
 const PANEL_FOCUS = { nav: 'Navigation', list: 'List', detail: 'Details' }
@@ -138,8 +128,8 @@ function listContent(s, items, capacity, width) {
     }
     case 'Preferences': {
       return {
-        title: t(language, 'preferences_language'),
-        ...windowContent(items.map(item => `${item.id === language ? '●' : '○'} ${item.name}`), selected, capacity),
+        title: t(language, 'preferences_title'),
+        ...windowContent(items.map(item => `${(item.kind === 'theme' ? item.id === s.theme : item.id === language) ? '●' : '○'} ${item.name}`), selected, capacity),
       }
     }
     case 'Console': {
@@ -288,9 +278,10 @@ function detailContent(s, items) {
     }
     case 'Preferences': {
       lines = [
-        t(language, 'current_language', { lang: LANGUAGES.find(item => item.id === language)?.name || language }),
+        t(language, 'current_language', { lang: preferenceItems().find(item => item.id === language)?.name || language }),
+        t(language, 'current_theme', { theme: themeName(s.theme) }),
         '',
-        t(language, 'apply_selected_language'),
+        t(language, 'apply_selected_setting'),
         t(language, 'changes_persist'),
       ]
       break
@@ -433,7 +424,7 @@ function renderBox(nodes, id, boxResult) {
   showNode(nodes, `${id}Frame`, boxResult.frame.left, boxResult.frame.top, boxResult.frame.width, boxResult.frame.height, boxResult.frame.lines, boxResult.frame.color)
   showNode(nodes, `${id}Inner`, boxResult.inner.left, boxResult.inner.top, boxResult.inner.width, boxResult.inner.height, boxResult.inner.lines, boxResult.inner.color, COLORS.background, boxResult.inner.colors)
   if (boxResult.inner.selected >= 0 && boxResult.inner.selected < boxResult.inner.height) {
-    showNode(nodes, `${id}Selection`, boxResult.inner.left, boxResult.inner.top + boxResult.inner.selected, boxResult.inner.width, 1, [padColumns(boxResult.inner.lines[boxResult.inner.selected] || '', boxResult.inner.width)], COLORS.accent, COLORS.selection)
+    showNode(nodes, `${id}Selection`, boxResult.inner.left, boxResult.inner.top + boxResult.inner.selected, boxResult.inner.width, 1, [padColumns(boxResult.inner.lines[boxResult.inner.selected] || '', boxResult.inner.width)], COLORS.selectionText, COLORS.selection)
   }
 }
 
@@ -460,6 +451,7 @@ export function createView(renderer) {
   return (s, app) => {
     const { width, height } = renderer
     const { language } = s
+    COLORS = themeColors(s.theme)
     const items = app.visibleItems()
     let detailMaxScroll = 0
     const mode = layoutMode(width, height)
