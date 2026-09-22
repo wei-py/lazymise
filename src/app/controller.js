@@ -73,8 +73,12 @@ export class Application {
       this.state.height = viewport.height
       this.#detailMaxScroll = viewport.detailMaxScroll
       this.state.detailScroll = Math.min(this.state.detailScroll, this.#detailMaxScroll)
-      if (this.state.overlay && viewport.overlayMaxScroll != null)
-        this.state.overlay.scroll = Math.min(this.state.overlay.scroll || 0, viewport.overlayMaxScroll)
+      if (this.state.overlay && viewport.overlayMaxScroll != null) {
+        this.state.overlay.scroll = Math.min(
+          this.state.overlay.scroll || 0,
+          viewport.overlayMaxScroll,
+        )
+      }
     }
   }
 
@@ -90,14 +94,18 @@ export class Application {
         this.update()
       }
       catch (error) {
-        this.state.status = t(this.state.language, 'config_target_invalid', { error: error.message || String(error) })
+        this.state.status = t(this.state.language, 'config_target_invalid', {
+          error: error.message || String(error),
+        })
       }
     }
     try {
       this.state.commands = await commandCatalog()
     }
     catch (error) {
-      this.state.status = t(this.state.language, 'command_failed', { error: error.message || String(error) })
+      this.state.status = t(this.state.language, 'command_failed', {
+        error: error.message || String(error),
+      })
     }
     this.state.loading = false
     this.clampSelection()
@@ -120,7 +128,9 @@ export class Application {
       return true
     }
     catch (error) {
-      this.state.status = t(this.state.language, 'snapshot_load_failed', { error: error.message || String(error) })
+      this.state.status = t(this.state.language, 'snapshot_load_failed', {
+        error: error.message || String(error),
+      })
       this.update()
       return false
     }
@@ -146,38 +156,94 @@ export class Application {
     if (meta)
       return
     switch (name) {
-      case 'q': this.#quit(); return
-      case '?': this.showHelp(); return
-      case '/': this.toggleSearch(); return
-      case 'r': void this.refresh(); return
-      case 'f2': this.openConfigTarget(); return
-      case 'a': void this.openRegistry(); return
-      case 'A': this.openCustomTool(); return
-      case ':': this.openCommandPalette(); return
-      case 'm': this.openContextCommands(); return
-      case '1': this.jumpToPage(PAGE.Dashboard); return
-      case '2': this.jumpToPage(PAGE.Tools); return
-      case '3': this.jumpToPage(PAGE.Updates); return
-      case '4': this.jumpToPage(PAGE.Tasks); return
-      case '5': this.jumpToPage(PAGE.Environment); return
-      case '6': this.jumpToPage(PAGE.Config); return
-      case '7': this.jumpToPage(PAGE.System); return
-      case '8': this.jumpToPage(PAGE.Preferences); return
-      case '9': this.jumpToPage(PAGE.Console); return
-      case '0': this.jumpToPage(PAGE.Logs); return
-      case '[': this.changePage(-1); return
-      case ']': this.changePage(1); return
+      case 'q':
+        this.#quit()
+        return
+      case '?':
+        this.showHelp()
+        return
+      case '/':
+        this.toggleSearch()
+        return
+      case 'r':
+        void this.refresh()
+        return
+      case 'f2':
+        this.openConfigTarget()
+        return
+      case 'a':
+        void this.openRegistry()
+        return
+      case 'A':
+        this.openCustomTool()
+        return
+      case ':':
+        this.openCommandPalette()
+        return
+      case 'm':
+        this.openContextCommands()
+        return
+      case '1':
+        this.jumpToPage(PAGE.Dashboard)
+        return
+      case '2':
+        this.jumpToPage(PAGE.Tools)
+        return
+      case '3':
+        this.jumpToPage(PAGE.Updates)
+        return
+      case '4':
+        this.jumpToPage(PAGE.Tasks)
+        return
+      case '5':
+        this.jumpToPage(PAGE.Environment)
+        return
+      case '6':
+        this.jumpToPage(PAGE.Config)
+        return
+      case '7':
+        this.jumpToPage(PAGE.System)
+        return
+      case '8':
+        this.jumpToPage(PAGE.Preferences)
+        return
+      case '9':
+        this.jumpToPage(PAGE.Console)
+        return
+      case '0':
+        this.jumpToPage(PAGE.Logs)
+        return
+      case '[':
+        this.changePage(-1)
+        return
+      case ']':
+        this.changePage(1)
+        return
       case 'h':
-      case 'left': this.moveFocus(-1); return
+      case 'left':
+        this.moveFocus(-1)
+        return
       case 'l':
-      case 'right': this.moveFocus(1); return
+      case 'right':
+        this.moveFocus(1)
+        return
       case 'j':
-      case 'down': this.moveVertical(1); return
+      case 'down':
+        this.moveVertical(1)
+        return
       case 'k':
-      case 'up': this.moveVertical(-1); return
-      case 'tab': this.cycleFocus(shift ? -1 : 1); return
-      case 'home': this.#goTop(); return
-      case 'end': this.#goBottom(); return
+      case 'up':
+        this.moveVertical(-1)
+        return
+      case 'tab':
+        this.cycleFocus(shift ? -1 : 1)
+        return
+      case 'home':
+        this.#goTop()
+        return
+      case 'end':
+        this.#goBottom()
+        return
       case 'escape':
         if (this.state.focus === FOCUS.Details)
           this.state.focus = FOCUS.List
@@ -249,7 +315,8 @@ export class Application {
           this.update()
         }
         break
-      case PAGE.Dashboard: break
+      case PAGE.Dashboard:
+        break
     }
   }
 
@@ -266,13 +333,21 @@ export class Application {
       this.#cancelOverlayFlow()
       return
     }
-    if (!key.ctrl && !key.meta && (key.name === 'pageup' || key.name === 'pagedown')
-      && ['ConfigTarget', 'CustomTool', 'Picker'].includes(ov.type)) {
+    if (
+      !key.ctrl
+      && !key.meta
+      && (key.name === 'pageup' || key.name === 'pagedown')
+      && ['ConfigTarget', 'CustomTool', 'Picker'].includes(ov.type)
+    ) {
       this.#scrollOverlay(ov, key.name)
       return
     }
-    if (!key.ctrl && !key.meta && key.name === 'f2'
-      && (ov.type === 'CustomTool' || (ov.type === 'Picker' && ov.intent !== VERSION_INTENT.Install))) {
+    if (
+      !key.ctrl
+      && !key.meta
+      && key.name === 'f2'
+      && (ov.type === 'CustomTool' || (ov.type === 'Picker' && ov.intent !== VERSION_INTENT.Install))
+    ) {
       if (ov.loading) {
         ov.error = t(this.state.language, 'config_target_wait')
         ov.scroll = 0
@@ -284,15 +359,31 @@ export class Application {
       return
     }
     switch (ov.type) {
-      case 'Search': this.handleSearchKey(key); break
-      case 'Help': this.#handleHelpKey(key); break
-      case 'ConfigTarget': this.handleConfigTargetKey(key); break
-      case 'Picker': this.handlePickerKey(key); break
-      case 'CommandPalette': this.handleCommandPaletteKey(key); break
-      case 'CommandBuilder': this.handleCommandBuilderKey(key); break
-      case 'CustomTool': this.handleCustomToolKey(key); break
+      case 'Search':
+        this.handleSearchKey(key)
+        break
+      case 'Help':
+        this.#handleHelpKey(key)
+        break
+      case 'ConfigTarget':
+        this.handleConfigTargetKey(key)
+        break
+      case 'Picker':
+        this.handlePickerKey(key)
+        break
+      case 'CommandPalette':
+        this.handleCommandPaletteKey(key)
+        break
+      case 'CommandBuilder':
+        this.handleCommandBuilderKey(key)
+        break
+      case 'CustomTool':
+        this.handleCustomToolKey(key)
+        break
       case 'ConfirmDelete':
-      case 'ConfirmCommand': this.handleConfirmKey(key); break
+      case 'ConfirmCommand':
+        this.handleConfirmKey(key)
+        break
     }
   }
 
@@ -390,14 +481,27 @@ export class Application {
   #scrollOverlay(ov, name) {
     switch (name) {
       case 'j':
-      case 'down': ov.scroll = Math.min(Number.MAX_SAFE_INTEGER, (ov.scroll || 0) + 1); break
+      case 'down':
+        ov.scroll = Math.min(Number.MAX_SAFE_INTEGER, (ov.scroll || 0) + 1)
+        break
       case 'k':
-      case 'up': ov.scroll = Math.max(0, (ov.scroll || 0) - 1); break
-      case 'pageup': ov.scroll = Math.max(0, (ov.scroll || 0) - 10); break
-      case 'pagedown': ov.scroll = Math.min(Number.MAX_SAFE_INTEGER, (ov.scroll || 0) + 10); break
-      case 'home': ov.scroll = 0; break
-      case 'end': ov.scroll = Number.MAX_SAFE_INTEGER; break
-      default: return
+      case 'up':
+        ov.scroll = Math.max(0, (ov.scroll || 0) - 1)
+        break
+      case 'pageup':
+        ov.scroll = Math.max(0, (ov.scroll || 0) - 10)
+        break
+      case 'pagedown':
+        ov.scroll = Math.min(Number.MAX_SAFE_INTEGER, (ov.scroll || 0) + 10)
+        break
+      case 'home':
+        ov.scroll = 0
+        break
+      case 'end':
+        ov.scroll = Number.MAX_SAFE_INTEGER
+        break
+      default:
+        return
     }
     this.update()
   }
@@ -456,12 +560,16 @@ export class Application {
       return false
     try {
       this.state.configTarget = validateConfigTarget(path)
-      this.state.status = t(this.state.language, 'config_target_selected', { path: this.state.configTarget.path })
+      this.state.status = t(this.state.language, 'config_target_selected', {
+        path: this.state.configTarget.path,
+      })
       this.update()
       return true
     }
     catch (error) {
-      this.state.status = t(this.state.language, 'config_target_invalid', { error: error.message || String(error) })
+      this.state.status = t(this.state.language, 'config_target_invalid', {
+        error: error.message || String(error),
+      })
       this.update()
       return false
     }
@@ -501,7 +609,9 @@ export class Application {
           }
           catch (error) {
             this.state.overlay = ov
-            ov.error = t(this.state.language, 'config_target_invalid', { error: error.message || String(error) })
+            ov.error = t(this.state.language, 'config_target_invalid', {
+              error: error.message || String(error),
+            })
             ov.scroll = 0
             this.update()
           }
@@ -510,7 +620,9 @@ export class Application {
       this.update()
     }
     catch (error) {
-      ov.error = t(this.state.language, 'config_target_invalid', { error: error.message || String(error) })
+      ov.error = t(this.state.language, 'config_target_invalid', {
+        error: error.message || String(error),
+      })
       ov.scroll = 0
       this.update()
     }
@@ -555,8 +667,14 @@ export class Application {
     }
     if (ctrl || meta)
       return
-    if (name === 'escape' || name === 'q') { this.#closeOverlay(); return }
-    if (name === '/') { this.#beginSearch(ov); return }
+    if (name === 'escape' || name === 'q') {
+      this.#closeOverlay()
+      return
+    }
+    if (name === '/') {
+      this.#beginSearch(ov)
+      return
+    }
     if (name === 'r') {
       void (async () => {
         const success = await this.refresh()
@@ -618,7 +736,8 @@ export class Application {
     ov.loadError = false
     this.update()
     try {
-      const result = ov.level === 'registry' ? await registry() : await remoteVersions(ov.toolSpecName)
+      const result
+        = ov.level === 'registry' ? await registry() : await remoteVersions(ov.toolSpecName)
       if (this.state.overlay !== ov)
         return
       if (ov.level === 'registry') {
@@ -695,12 +814,21 @@ export class Application {
     }
     if (ctrl || meta)
       return
-    if (name === 'escape' || name === 'q') { this.#closeOverlay(); return }
+    if (name === 'escape' || name === 'q') {
+      this.#closeOverlay()
+      return
+    }
     if (ov.loading)
       return
-    if (name === 'r' && ov.level !== 'backends') { void this.#loadPicker(ov); return }
+    if (name === 'r' && ov.level !== 'backends') {
+      void this.#loadPicker(ov)
+      return
+    }
     if (ov.level === 'registry') {
-      if (name === '/') { this.#beginSearch(ov); return }
+      if (name === '/') {
+        this.#beginSearch(ov)
+        return
+      }
       if (name === 'tab') {
         ov.filterIdx = moveIndex(ov.filterIdx, shift ? -1 : 1, ov.backends.length)
         ov.selected = 0
@@ -749,12 +877,21 @@ export class Application {
   #moveOverlaySelection(ov, name, length) {
     switch (name) {
       case 'j':
-      case 'down': ov.selected = moveIndex(ov.selected, 1, length); break
+      case 'down':
+        ov.selected = moveIndex(ov.selected, 1, length)
+        break
       case 'k':
-      case 'up': ov.selected = moveIndex(ov.selected, -1, length); break
-      case 'home': ov.selected = 0; break
-      case 'end': ov.selected = Math.max(0, length - 1); break
-      default: return
+      case 'up':
+        ov.selected = moveIndex(ov.selected, -1, length)
+        break
+      case 'home':
+        ov.selected = 0
+        break
+      case 'end':
+        ov.selected = Math.max(0, length - 1)
+        break
+      default:
+        return
     }
     if (ov.type === 'ConfigTarget')
       ov.scroll = 0
@@ -779,9 +916,11 @@ export class Application {
     this.state.overlay = {
       type: 'CommandPalette',
       parent: null,
-      commands: commands.filter(command => page === PAGE.Dashboard
-        ? DASHBOARD_COMMANDS.includes(command.name)
-        : commandBelongsToPage(page, command.name)),
+      commands: commands.filter(command =>
+        page === PAGE.Dashboard
+          ? DASHBOARD_COMMANDS.includes(command.name)
+          : commandBelongsToPage(page, command.name),
+      ),
       selected: 0,
       search: '',
       searching: false,
@@ -799,8 +938,14 @@ export class Application {
     if (key.ctrl || key.meta)
       return
     const { name } = key
-    if (name === 'escape' || name === 'q') { this.#closeOverlay(); return }
-    if (name === '/') { this.#beginSearch(ov); return }
+    if (name === 'escape' || name === 'q') {
+      this.#closeOverlay()
+      return
+    }
+    if (name === '/') {
+      this.#beginSearch(ov)
+      return
+    }
     const items = filterCommands(ov.commands, ov.search)
     if (name === 'enter') {
       if (items[ov.selected])
@@ -871,7 +1016,10 @@ export class Application {
       }
       return
     }
-    if (name === 'escape') { this.#closeOverlay(); return }
+    if (name === 'escape') {
+      this.#closeOverlay()
+      return
+    }
     if (name === 'tab') {
       ov.mode = 'help'
       this.update()
@@ -915,7 +1063,10 @@ export class Application {
         ov.input = ''
       else return
     }
-    else if (name === 'escape') { this.#closeOverlay(); return }
+    else if (name === 'escape') {
+      this.#closeOverlay()
+      return
+    }
     else if (name === 'enter') {
       const spec = ov.input.trim()
       if (spec && this.useTool(spec))
@@ -943,7 +1094,9 @@ export class Application {
       this.state.configTarget = target
     }
     catch (error) {
-      const message = t(this.state.language, 'config_target_invalid', { error: error.message || String(error) })
+      const message = t(this.state.language, 'config_target_invalid', {
+        error: error.message || String(error),
+      })
       if (this.state.overlay) {
         this.state.overlay.error = message
         this.state.overlay.scroll = 0
@@ -952,20 +1105,26 @@ export class Application {
       this.update()
       return false
     }
-    this.executeBackground(['use', '--yes', '--path', target.path, spec], `use ${spec} → ${target.path}`, (task) => {
-      if (this.state.configTarget?.path !== target.path)
-        return
-      let created = task.status === 'done'
-      if (!created) {
-        try { created = statSync(target.path).isFile() }
-        catch (error) {
-          if (error.code !== 'ENOENT')
-            throw error
+    this.executeBackground(
+      ['use', '--yes', '--path', target.path, spec],
+      `use ${spec} → ${target.path}`,
+      (task) => {
+        if (this.state.configTarget?.path !== target.path)
+          return
+        let created = task.status === 'done'
+        if (!created) {
+          try {
+            created = statSync(target.path).isFile()
+          }
+          catch (error) {
+            if (error.code !== 'ENOENT')
+              throw error
+          }
         }
-      }
-      if (created)
-        this.state.configTarget = { path: target.path, create: false }
-    })
+        if (created)
+          this.state.configTarget = { path: target.path, create: false }
+      },
+    )
     return true
   }
 
@@ -976,7 +1135,9 @@ export class Application {
       command,
       args,
       scroll: 0,
-      message: t(this.state.language, 'confirm_command', { command: ['mise', command, ...args].join(' ') }),
+      message: t(this.state.language, 'confirm_command', {
+        command: ['mise', command, ...args].join(' '),
+      }),
     }
     this.update()
   }
@@ -1023,7 +1184,11 @@ export class Application {
     this.update()
     try {
       if (passthrough || isInteractive(args[0])) {
-        const proc = Bun.spawn(['mise', ...args], { stdout: 'inherit', stderr: 'inherit', stdin: 'inherit' })
+        const proc = Bun.spawn(['mise', ...args], {
+          stdout: 'inherit',
+          stderr: 'inherit',
+          stdin: 'inherit',
+        })
         const exitCode = await proc.exited
         this.finishCommand({ command: `mise ${cmdStr}`, output: '', success: exitCode === 0 })
       }
@@ -1032,18 +1197,28 @@ export class Application {
       }
     }
     catch (error) {
-      this.finishCommand({ command: `mise ${cmdStr}`, output: error.message || String(error), success: false })
+      this.finishCommand({
+        command: `mise ${cmdStr}`,
+        output: error.message || String(error),
+        success: false,
+      })
     }
   }
 
   finishCommand(result) {
     const selection = this.#captureSelection()
-    this.state.logs.unshift({ command: result.command || '', output: result.output || '', success: result.success !== false })
+    this.state.logs.unshift({
+      command: result.command || '',
+      output: result.output || '',
+      success: result.success !== false,
+    })
     this.state.logs.length = Math.min(this.state.logs.length, 100)
     this.#restoreSelection(selection)
     this.state.status = result.success
       ? t(this.state.language, 'command_success')
-      : t(this.state.language, 'command_failed', { error: result.output || t(this.state.language, 'unknown_error') })
+      : t(this.state.language, 'command_failed', {
+          error: result.output || t(this.state.language, 'unknown_error'),
+        })
     this.update()
     if (result.success)
       void this.refresh()
@@ -1091,7 +1266,11 @@ export class Application {
         task.output = [task.output, error.message || String(error)].filter(Boolean).join('\n')
         task.status = 'failed'
       }
-      this.finishCommand({ command: task.command, output: task.output, success: task.status === 'done' })
+      this.finishCommand({
+        command: task.command,
+        output: task.output,
+        success: task.status === 'done',
+      })
     })()
     return task
   }
@@ -1119,7 +1298,8 @@ export class Application {
     if (!tool)
       return
     const spec = `${tool.name}@${tool.version}`
-    this.#confirmDelete(spec, () => this.executeBackground(['uninstall', '--yes', spec], `uninstall ${spec}`))
+    this.#confirmDelete(spec, () =>
+      this.executeBackground(['uninstall', '--yes', spec], `uninstall ${spec}`))
   }
 
   toggleSelectedUpdate() {
@@ -1145,7 +1325,10 @@ export class Application {
     const names = [...new Set(updates.map(item => item.name))]
     if (!names.length)
       return
-    const range = t(this.state.language, allVisible ? 'upgrade_visible' : marked ? 'upgrade_marked' : 'upgrade_current')
+    const range = t(
+      this.state.language,
+      allVisible ? 'upgrade_visible' : marked ? 'upgrade_marked' : 'upgrade_current',
+    )
     this.state.overlay = {
       type: 'ConfirmCommand',
       parent: null,
@@ -1181,21 +1364,29 @@ export class Application {
 
   applySelectedPreference() {
     const candidate = this.visibleItems()[this.state.selected]
-    if (!candidate || candidate.id === (candidate.kind === 'theme' ? this.state.theme : this.state.language))
+    if (
+      !candidate
+      || candidate.id === (candidate.kind === 'theme' ? this.state.theme : this.state.language)
+    ) {
       return
-    const settings = candidate.kind === 'theme'
-      ? { language: this.state.language, theme: candidate.id }
-      : { language: candidate.id, theme: this.state.theme }
+    }
+    const settings
+      = candidate.kind === 'theme'
+        ? { language: this.state.language, theme: candidate.id }
+        : { language: candidate.id, theme: this.state.theme }
     try {
       saveSettings(settings)
       this.state.language = settings.language
       this.state.theme = settings.theme
-      this.state.status = candidate.kind === 'theme'
-        ? t(settings.language, 'current_theme', { theme: candidate.name })
-        : t(settings.language, 'current_language', { lang: candidate.name })
+      this.state.status
+        = candidate.kind === 'theme'
+          ? t(settings.language, 'current_theme', { theme: candidate.name })
+          : t(settings.language, 'current_language', { lang: candidate.name })
     }
     catch (error) {
-      this.state.status = t(this.state.language, 'preference_save_failed', { error: error.message || String(error) })
+      this.state.status = t(this.state.language, 'preference_save_failed', {
+        error: error.message || String(error),
+      })
     }
     this.update()
   }
@@ -1210,9 +1401,15 @@ export class Application {
     this.state.focus = focus
     if (this.state.page !== page) {
       this.state.page = page
-      this.state.selected = page === PAGE.Preferences
-        ? Math.max(0, preferenceItems().findIndex(item => item.kind === 'language' && item.id === this.state.language))
-        : 0
+      this.state.selected
+        = page === PAGE.Preferences
+          ? Math.max(
+              0,
+              preferenceItems().findIndex(
+                item => item.kind === 'language' && item.id === this.state.language,
+              ),
+            )
+          : 0
       this.state.detailScroll = 0
       this.state.search = ''
     }
@@ -1221,7 +1418,10 @@ export class Application {
   }
 
   changePage(delta, focus = FOCUS.List) {
-    this.jumpToPage(PAGE_ORDER[moveIndex(PAGE_ORDER.indexOf(this.state.page), delta, PAGE_ORDER.length)], focus)
+    this.jumpToPage(
+      PAGE_ORDER[moveIndex(PAGE_ORDER.indexOf(this.state.page), delta, PAGE_ORDER.length)],
+      focus,
+    )
   }
 
   cycleFocus(delta) {
@@ -1241,14 +1441,18 @@ export class Application {
       this.update()
     }
     else {
-      this.state.detailScroll = Math.max(0, Math.min(this.#detailMaxScroll, this.state.detailScroll + delta))
+      this.state.detailScroll = Math.max(
+        0,
+        Math.min(this.#detailMaxScroll, this.state.detailScroll + delta),
+      )
       this.update()
     }
   }
 
   moveFocus(delta) {
     const seq = focusSeq()
-    this.state.focus = seq[Math.max(0, Math.min(seq.length - 1, seq.indexOf(this.state.focus) + delta))]
+    this.state.focus
+      = seq[Math.max(0, Math.min(seq.length - 1, seq.indexOf(this.state.focus) + delta))]
     this.update()
   }
 
@@ -1272,13 +1476,16 @@ export class Application {
 
   #dismissConsoleTasks() {
     const selection = this.#captureSelection()
-    this.state.consoleTasks = this.state.consoleTasks.filter(task => task.status === 'pending' || task.status === 'running')
+    this.state.consoleTasks = this.state.consoleTasks.filter(
+      task => task.status === 'pending' || task.status === 'running',
+    )
     this.#restoreSelection(selection)
     this.update()
   }
 
   #copyToClipboard(text) {
-    const cmd = process.platform === 'darwin' ? 'pbcopy' : process.platform === 'linux' ? 'wl-copy' : 'clip'
+    const cmd
+      = process.platform === 'darwin' ? 'pbcopy' : process.platform === 'linux' ? 'wl-copy' : 'clip'
     const proc = spawnSync(cmd, [], { input: text, timeout: 3000 })
     if (proc.status !== 0)
       throw new Error(proc.error?.message || proc.stderr?.toString() || 'clipboard unavailable')
@@ -1296,39 +1503,90 @@ export class Application {
       this.state.status = t(this.state.language, 'config_copied', { path: config.path })
     }
     catch (error) {
-      this.state.status = t(this.state.language, 'config_copy_failed', { error: error.message || String(error) })
+      this.state.status = t(this.state.language, 'config_copy_failed', {
+        error: error.message || String(error),
+      })
     }
     this.update()
   }
 
   visibleItems() {
     const { page, snapshot, search, commands } = this.state
-    const matches = (...fields) => fields.some(field => containsCaseInsensitive(field || '', search))
+    const matches = (...fields) =>
+      fields.some(field => containsCaseInsensitive(field || '', search))
     switch (page) {
-      case PAGE.Dashboard: return []
-      case PAGE.Tools: return search ? snapshot.tools.filter(item => matches(item.name, item.version)) : snapshot.tools
-      case PAGE.Updates: return search ? snapshot.updates.filter(item => matches(item.name, item.current)) : snapshot.updates
-      case PAGE.Tasks: return search ? snapshot.tasks.filter(item => matches(item.name, item.description)) : snapshot.tasks
-      case PAGE.Config: return search ? snapshot.configs.filter(item => matches(item.path, item.tools.join(' '))) : snapshot.configs
-      case PAGE.Console: return search ? this.state.consoleTasks.filter(item => matches(item.label, item.command, item.output)) : this.state.consoleTasks
-      case PAGE.Logs: return search ? this.state.logs.filter(item => matches(item.command, item.output)) : this.state.logs
+      case PAGE.Dashboard:
+        return []
+      case PAGE.Tools:
+        return search
+          ? snapshot.tools.filter(item => matches(item.name, item.version))
+          : snapshot.tools
+      case PAGE.Updates:
+        return search
+          ? snapshot.updates.filter(item => matches(item.name, item.current))
+          : snapshot.updates
+      case PAGE.Tasks:
+        return search
+          ? snapshot.tasks.filter(item => matches(item.name, item.description))
+          : snapshot.tasks
+      case PAGE.Config:
+        return search
+          ? snapshot.configs.filter(item => matches(item.path, item.tools.join(' ')))
+          : snapshot.configs
+      case PAGE.Console:
+        return search
+          ? this.state.consoleTasks.filter(item => matches(item.label, item.command, item.output))
+          : this.state.consoleTasks
+      case PAGE.Logs:
+        return search
+          ? this.state.logs.filter(item => matches(item.command, item.output))
+          : this.state.logs
       case PAGE.Environment:
-      case PAGE.System: return filterCommands(commands.filter(item => commandBelongsToPage(page, item.name)), search)
-      case PAGE.Preferences: return preferenceItems()
-      default: return []
+      case PAGE.System:
+        return filterCommands(
+          commands.filter(item => commandBelongsToPage(page, item.name)),
+          search,
+        )
+      case PAGE.Preferences:
+        return preferenceItems()
+      default:
+        return []
     }
   }
 
-  selectedTool() { return this.state.page === PAGE.Tools ? this.visibleItems()[this.state.selected] || null : null }
-  selectedUpdate() { return this.state.page === PAGE.Updates ? this.visibleItems()[this.state.selected] || null : null }
-  selectedTask() { return this.state.page === PAGE.Tasks ? this.visibleItems()[this.state.selected] || null : null }
-  selectedConfig() { return this.state.page === PAGE.Config ? this.visibleItems()[this.state.selected] || null : null }
-  selectedLog() { return this.state.page === PAGE.Logs ? this.visibleItems()[this.state.selected] || null : null }
-  selectedPageCommand() {
-    return [PAGE.Environment, PAGE.System].includes(this.state.page) ? this.visibleItems()[this.state.selected] || null : null
+  selectedTool() {
+    return this.state.page === PAGE.Tools ? this.visibleItems()[this.state.selected] || null : null
   }
 
-  currentListLen() { return this.visibleItems().length }
+  selectedUpdate() {
+    return this.state.page === PAGE.Updates
+      ? this.visibleItems()[this.state.selected] || null
+      : null
+  }
+
+  selectedTask() {
+    return this.state.page === PAGE.Tasks ? this.visibleItems()[this.state.selected] || null : null
+  }
+
+  selectedConfig() {
+    return this.state.page === PAGE.Config
+      ? this.visibleItems()[this.state.selected] || null
+      : null
+  }
+
+  selectedLog() {
+    return this.state.page === PAGE.Logs ? this.visibleItems()[this.state.selected] || null : null
+  }
+
+  selectedPageCommand() {
+    return [PAGE.Environment, PAGE.System].includes(this.state.page)
+      ? this.visibleItems()[this.state.selected] || null
+      : null
+  }
+
+  currentListLen() {
+    return this.visibleItems().length
+  }
 
   clampSelection() {
     const len = this.currentListLen()
@@ -1341,12 +1599,18 @@ export class Application {
     if (!item)
       return null
     switch (this.state.page) {
-      case PAGE.Tools: return `${item.name}\0${item.version}`
-      case PAGE.Config: return item.path
-      case PAGE.Console: return item.id
-      case PAGE.Logs: return item
-      case PAGE.Preferences: return item.id
-      default: return item.name
+      case PAGE.Tools:
+        return `${item.name}\0${item.version}`
+      case PAGE.Config:
+        return item.path
+      case PAGE.Console:
+        return item.id
+      case PAGE.Logs:
+        return item
+      case PAGE.Preferences:
+        return item.id
+      default:
+        return item.name
     }
   }
 
@@ -1355,7 +1619,8 @@ export class Application {
   }
 
   #restoreSelection(key) {
-    const index = key === null ? -1 : this.visibleItems().findIndex(item => this.#itemKey(item) === key)
+    const index
+      = key === null ? -1 : this.visibleItems().findIndex(item => this.#itemKey(item) === key)
     if (index >= 0)
       this.state.selected = index
     else this.state.detailScroll = 0

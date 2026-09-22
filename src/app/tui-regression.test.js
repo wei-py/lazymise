@@ -1,5 +1,14 @@
 import { Buffer } from 'node:buffer'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createTestRenderer } from '@opentui/core/testing'
@@ -16,8 +25,16 @@ async function fixture(run, width = 100, height = 24) {
   const previous = process.env.LAZYMISE_CONFIG_DIR
   const dir = mkdtempSync(join(tmpdir(), 'lazymise-regression-'))
   process.env.LAZYMISE_CONFIG_DIR = dir
-  const ui = await createTestRenderer({ width, height, kittyKeyboard: true, exitOnCtrlC: false, exitSignals: [] })
-  const app = new Application(createView(ui.renderer), () => { throw new Error('Unexpected exit') })
+  const ui = await createTestRenderer({
+    width,
+    height,
+    kittyKeyboard: true,
+    exitOnCtrlC: false,
+    exitSignals: [],
+  })
+  const app = new Application(createView(ui.renderer), () => {
+    throw new Error('Unexpected exit')
+  })
   app.state.loading = false
   ui.renderer.keyInput.on('keypress', (key) => {
     if (key.eventType === 'release')
@@ -43,9 +60,15 @@ async function fixture(run, width = 100, height = 24) {
 }
 
 function highlighted(ui, text) {
-  return ui.captureSpans().lines.some(line => line.spans.some(span =>
-    span.text.includes(text) && [...span.bg.buffer].slice(0, 3).join(',') === '38,50,56',
-  ))
+  return ui
+    .captureSpans()
+    .lines
+    .some(line =>
+      line.spans.some(
+        span =>
+          span.text.includes(text) && [...span.bg.buffer].slice(0, 3).join(',') === '38,50,56',
+      ),
+    )
 }
 
 test('language cursor, explicit apply, persistence and focus gating', async () => {
@@ -114,8 +137,7 @@ test('column clipping preserves complete graphemes within every budget', () => {
       expect(stringWidth(clipped)).toBeLessThanOrEqual(width)
       const prefix = clipped.endsWith('…') ? clipped.slice(0, -1) : clipped
       const prefixes = ['']
-      for (const { segment } of segmenter.segment(value))
-        prefixes.push(prefixes.at(-1) + segment)
+      for (const { segment } of segmenter.segment(value)) prefixes.push(prefixes.at(-1) + segment)
       expect(prefixes).toContain(prefix)
     }
   }
@@ -125,8 +147,7 @@ function cells(row) {
   const result = []
   for (const { segment } of new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(row)) {
     result.push(segment)
-    for (let column = 1; column < stringWidth(segment); column++)
-      result.push('')
+    for (let column = 1; column < stringWidth(segment); column++) result.push('')
   }
   return result
 }
@@ -135,7 +156,9 @@ function modalRect(ui, title) {
   const rows = ui.captureCharFrame().split('\n')
   const top = rows.findIndex(row => row.includes(`╭ ${title}`))
   expect(top).toBeGreaterThanOrEqual(0)
-  const left = stringWidth(rows[top].slice(0, rows[top].indexOf('╭', rows[top].indexOf(title) - 2)))
+  const left = stringWidth(
+    rows[top].slice(0, rows[top].indexOf('╭', rows[top].indexOf(title) - 2)),
+  )
   const right = stringWidth(rows[top].slice(0, rows[top].indexOf('╮', rows[top].indexOf(title))))
   const bottom = rows.findIndex((row, index) => index > top && cells(row)[left] === '╰')
   expect(bottom).toBeGreaterThan(top)
@@ -163,18 +186,25 @@ function modalRect(ui, title) {
 }
 
 test('native modal borders center short content and hide the underlying panels', async () => {
-  for (const [width, height] of [[100, 24], [70, 18]]) {
-    await fixture(async ({ app, ui, frame }) => {
-      for (const language of ['en', 'zh']) {
-        app.state.language = language
-        app.state.overlay = { type: 'Search' }
-        app.state.search = '中文e\u0301👩‍💻'
-        await frame()
-        const rect = modalRect(ui, language === 'en' ? 'Search' : '搜索')
-        const spans = ui.captureSpans().lines[rect.top + 1].spans
-        expect(spans.map(span => span.text).join('')).toContain('中文e\u0301👩‍💻')
-      }
-    }, width, height)
+  for (const [width, height] of [
+    [100, 24],
+    [70, 18],
+  ]) {
+    await fixture(
+      async ({ app, ui, frame }) => {
+        for (const language of ['en', 'zh']) {
+          app.state.language = language
+          app.state.overlay = { type: 'Search' }
+          app.state.search = '中文e\u0301👩‍💻'
+          await frame()
+          const rect = modalRect(ui, language === 'en' ? 'Search' : '搜索')
+          const spans = ui.captureSpans().lines[rect.top + 1].spans
+          expect(spans.map(span => span.text).join('')).toContain('中文e\u0301👩‍💻')
+        }
+      },
+      width,
+      height,
+    )
   }
 })
 
@@ -183,47 +213,81 @@ const tools = Array.from({ length: 35 }, (_, index) => ({
   description: `描述 e\u0301 👩‍💻 ${'长说明'.repeat(30)}`,
   backends: index % 2 ? ['npm', 'cargo'] : ['asdf', 'core'],
 }))
-const versions = Array.from({ length: 35 }, (_, index) => ({ version: `v${index}`, created_at: '2026-01-01' }))
+const versions = Array.from({ length: 35 }, (_, index) => ({
+  version: `v${index}`,
+  created_at: '2026-01-01',
+}))
 
 test('all modal surfaces have closed centered frames in EN/ZH at both layouts', async () => {
-  for (const [width, height] of [[100, 24], [70, 18]]) {
-    await fixture(async ({ app, ui, frame }) => {
-      for (const language of ['en', 'zh']) {
-        app.state.language = language
-        const overlays = [
-          [{ type: 'Help', scroll: 0 }, 'help_title_full'],
-          [{ type: 'Search' }, 'search_title'],
-          [{ type: 'CommandPalette', commands: tools, selected: 34 }, 'command_palette'],
-          [{ type: 'CommandBuilder', command: { name: 'install' }, args: '', help: 'First\n\nLast', mode: 'help', scroll: 2 }, null],
-          [{ type: 'CustomTool', input: 'npm:工具' }, 'custom_tool'],
-          [{ type: 'ConfirmDelete', message: '删除工具？' }, 'confirm_delete_title'],
-          [{ type: 'ConfirmCommand', message: '运行命令？' }, 'confirm_command_title'],
-          [{ type: 'Picker', level: 'registry', tools, backends: ['All'], selected: 34 }, 'picker_registry'],
-          [{ type: 'Picker', level: 'backends', backendList: ['npm', 'cargo'], selected: 1 }, 'picker_backends'],
-          [{ type: 'Picker', level: 'versions', versions, selected: 34 }, 'picker_versions'],
-        ]
-        for (const [overlay, titleKey] of overlays) {
-          app.state.overlay = overlay
-          await frame()
-          modalRect(ui, titleKey ? t(language, titleKey) : 'mise install')
-          if (overlay.type === 'CommandPalette' || overlay.level === 'registry')
-            expect(highlighted(ui, 'tool-34')).toBe(true)
-          if (overlay.level === 'backends')
-            expect(highlighted(ui, 'cargo')).toBe(true)
-          if (overlay.level === 'versions')
-            expect(highlighted(ui, 'v34')).toBe(true)
-          app.state.overlay = null
-          const closed = await frame()
-          expect(closed).not.toContain(`╭ ${titleKey ? t(language, titleKey) : 'mise install'}`)
+  for (const [width, height] of [
+    [100, 24],
+    [70, 18],
+  ]) {
+    await fixture(
+      async ({ app, ui, frame }) => {
+        for (const language of ['en', 'zh']) {
+          app.state.language = language
+          const overlays = [
+            [{ type: 'Help', scroll: 0 }, 'help_title_full'],
+            [{ type: 'Search' }, 'search_title'],
+            [{ type: 'CommandPalette', commands: tools, selected: 34 }, 'command_palette'],
+            [
+              {
+                type: 'CommandBuilder',
+                command: { name: 'install' },
+                args: '',
+                help: 'First\n\nLast',
+                mode: 'help',
+                scroll: 2,
+              },
+              null,
+            ],
+            [{ type: 'CustomTool', input: 'npm:工具' }, 'custom_tool'],
+            [{ type: 'ConfirmDelete', message: '删除工具？' }, 'confirm_delete_title'],
+            [{ type: 'ConfirmCommand', message: '运行命令？' }, 'confirm_command_title'],
+            [
+              { type: 'Picker', level: 'registry', tools, backends: ['All'], selected: 34 },
+              'picker_registry',
+            ],
+            [
+              { type: 'Picker', level: 'backends', backendList: ['npm', 'cargo'], selected: 1 },
+              'picker_backends',
+            ],
+            [{ type: 'Picker', level: 'versions', versions, selected: 34 }, 'picker_versions'],
+          ]
+          for (const [overlay, titleKey] of overlays) {
+            app.state.overlay = overlay
+            await frame()
+            modalRect(ui, titleKey ? t(language, titleKey) : 'mise install')
+            if (overlay.type === 'CommandPalette' || overlay.level === 'registry')
+              expect(highlighted(ui, 'tool-34')).toBe(true)
+            if (overlay.level === 'backends')
+              expect(highlighted(ui, 'cargo')).toBe(true)
+            if (overlay.level === 'versions')
+              expect(highlighted(ui, 'v34')).toBe(true)
+            app.state.overlay = null
+            const closed = await frame()
+            expect(closed).not.toContain(`╭ ${titleKey ? t(language, titleKey) : 'mise install'}`)
+          }
         }
-      }
-    }, width, height)
+      },
+      width,
+      height,
+    )
   }
 })
 
 test('filtered registry selection enters and returns to the same backend tool', async () => {
   await fixture(async ({ app, ui, frame }) => {
-    app.state.overlay = { type: 'Picker', level: 'registry', tools, backends: ['All', 'npm'], filterIdx: 1, search: 'tool-', selected: 0 }
+    app.state.overlay = {
+      type: 'Picker',
+      level: 'registry',
+      tools,
+      backends: ['All', 'npm'],
+      filterIdx: 1,
+      search: 'tool-',
+      selected: 0,
+    }
     expect(await frame()).not.toContain('tool-0 ')
     expect(highlighted(ui, 'tool-1')).toBe(true)
     expect(highlighted(ui, '[npm]')).toBe(false)
@@ -242,7 +306,11 @@ test('filtered registry selection enters and returns to the same backend tool', 
 
 test('empty, loading and failed pickers never highlight a fake item', async () => {
   await fixture(async ({ app, ui, frame }) => {
-    for (const [level, key] of [['registry', 'no_results'], ['backends', 'no_backends'], ['versions', 'no_versions']]) {
+    for (const [level, key] of [
+      ['registry', 'no_results'],
+      ['backends', 'no_backends'],
+      ['versions', 'no_versions'],
+    ]) {
       for (const statusText of ['', 'Loading fixture', 'Original failure']) {
         app.state.overlay = { type: 'Picker', level, error: statusText, tools: [], selected: 0 }
         const text = statusText || t('en', key)
@@ -254,88 +322,130 @@ test('empty, loading and failed pickers never highlight a fake item', async () =
 })
 
 test('Builder title, input tails and wrapped help retain visible selection', async () => {
-  await fixture(async ({ app, ui, frame }) => {
-    const input = `${'长参数'.repeat(60)}e\u0301👩‍💻END`
-    for (const type of ['Search', 'CustomTool', 'CommandBuilder']) {
-      app.state.search = input
-      app.state.overlay = { type, command: { name: 'install' }, input, args: input, help: `${'FIRST\n\n中文'.repeat(25)}\nLAST`, mode: 'input', scroll: 0 }
-      const rendered = await frame()
-      expect(rendered).toContain('e\u0301👩‍💻END█')
-      expect(rendered).not.toContain('[object Object]')
-      expect(app.state.overlay.args).toBe(input)
-      if (type === 'CommandBuilder') {
-        ui.mockInput.pressTab()
-        await frame()
-        expect(highlighted(ui, 'FIRST')).toBe(true)
-        ui.mockInput.pressKey('END')
-        await frame()
-        expect(highlighted(ui, 'LAST')).toBe(true)
-        ui.mockInput.pressEscape()
-        expect(app.state.overlay.mode).toBe('input')
+  await fixture(
+    async ({ app, ui, frame }) => {
+      const input = `${'长参数'.repeat(60)}e\u0301👩‍💻END`
+      for (const type of ['Search', 'CustomTool', 'CommandBuilder']) {
+        app.state.search = input
+        app.state.overlay = {
+          type,
+          command: { name: 'install' },
+          input,
+          args: input,
+          help: `${'FIRST\n\n中文'.repeat(25)}\nLAST`,
+          mode: 'input',
+          scroll: 0,
+        }
+        const rendered = await frame()
+        expect(rendered).toContain('e\u0301👩‍💻END█')
+        expect(rendered).not.toContain('[object Object]')
         expect(app.state.overlay.args).toBe(input)
-        ui.mockInput.pressEscape()
-        expect(await frame()).not.toContain('╭ mise install')
+        if (type === 'CommandBuilder') {
+          ui.mockInput.pressTab()
+          await frame()
+          expect(highlighted(ui, 'FIRST')).toBe(true)
+          ui.mockInput.pressKey('END')
+          await frame()
+          expect(highlighted(ui, 'LAST')).toBe(true)
+          ui.mockInput.pressEscape()
+          expect(app.state.overlay.mode).toBe('input')
+          expect(app.state.overlay.args).toBe(input)
+          ui.mockInput.pressEscape()
+          expect(await frame()).not.toContain('╭ mise install')
+        }
       }
-    }
-    app.state.overlay = { type: 'CommandBuilder', command: { name: '中文标题'.repeat(60) }, args: '', help: '', mode: 'input' }
-    expect(await frame()).toContain('…')
-    modalRect(ui, 'mise 中文')
-  }, 70, 18)
+      app.state.overlay = {
+        type: 'CommandBuilder',
+        command: { name: '中文标题'.repeat(60) },
+        args: '',
+        help: '',
+        mode: 'input',
+      }
+      expect(await frame()).toContain('…')
+      modalRect(ui, 'mise 中文')
+    },
+    70,
+    18,
+  )
 })
 
 test('Help scrolls without key leakage and cancels cleanly', async () => {
-  await fixture(async ({ app, ui, frame }) => {
-    app.showHelp()
-    const first = await frame()
-    ui.mockInput.pressKey('o')
-    expect(app.state.page).toBe('Dashboard')
-    ui.mockInput.pressKey('j')
-    expect(app.state.overlay.scroll).toBe(1)
-    ui.mockInput.pressArrow('up')
-    expect(app.state.overlay.scroll).toBe(0)
-    ui.mockInput.pressKey('END')
-    const last = await frame()
-    expect(last).toContain('Esc/q')
-    expect(last).not.toBe(first)
-    ui.mockInput.pressKey('HOME')
-    expect(await frame()).toBe(first)
-    ui.mockInput.pressEscape()
-    expect(await frame()).not.toContain('╭ LAZYMISE')
-    app.showHelp()
-    ui.mockInput.pressKey('q')
-    expect(app.state.overlay).toBeNull()
-    app.showHelp()
-    ui.mockInput.pressCtrlC()
-    expect(app.state.overlay).toBeNull()
-  }, 60, 8)
+  await fixture(
+    async ({ app, ui, frame }) => {
+      app.showHelp()
+      const first = await frame()
+      ui.mockInput.pressKey('o')
+      expect(app.state.page).toBe('Dashboard')
+      ui.mockInput.pressKey('j')
+      expect(app.state.overlay.scroll).toBe(1)
+      ui.mockInput.pressArrow('up')
+      expect(app.state.overlay.scroll).toBe(0)
+      ui.mockInput.pressKey('END')
+      const last = await frame()
+      expect(last).toContain('Esc/q')
+      expect(last).not.toBe(first)
+      ui.mockInput.pressKey('HOME')
+      expect(await frame()).toBe(first)
+      ui.mockInput.pressEscape()
+      expect(await frame()).not.toContain('╭ LAZYMISE')
+      app.showHelp()
+      ui.mockInput.pressKey('q')
+      expect(app.state.overlay).toBeNull()
+      app.showHelp()
+      ui.mockInput.pressCtrlC()
+      expect(app.state.overlay).toBeNull()
+    },
+    60,
+    8,
+  )
 })
 
 test('small sizes stay bounded and confirmations always retain their prompt', async () => {
-  for (const [width, height] of [[60, 8], [59, 24], [100, 7]]) {
-    await fixture(async ({ app, ui, frame }) => {
-      for (const language of ['en', 'zh']) {
-        app.state.language = language
-        for (const type of ['ConfirmDelete', 'ConfirmCommand']) {
-          let executed = false
-          app.state.overlay = { type, message: '中文混合 e\u0301👩‍💻 '.repeat(100), onConfirm: () => { executed = true } }
-          const rendered = await frame()
-          if (width < 60 || height < 8) {
-            expect(rendered).toContain(t(language, 'Terminal too small'))
-            expect(rendered).not.toContain('╭')
+  for (const [width, height] of [
+    [60, 8],
+    [59, 24],
+    [100, 7],
+  ]) {
+    await fixture(
+      async ({ app, ui, frame }) => {
+        for (const language of ['en', 'zh']) {
+          app.state.language = language
+          for (const type of ['ConfirmDelete', 'ConfirmCommand']) {
+            let executed = false
+            app.state.overlay = {
+              type,
+              message: '中文混合 e\u0301👩‍💻 '.repeat(100),
+              onConfirm: () => {
+                executed = true
+              },
+            }
+            const rendered = await frame()
+            if (width < 60 || height < 8) {
+              expect(rendered).toContain(t(language, 'Terminal too small'))
+              expect(rendered).not.toContain('╭')
+            }
+            else {
+              modalRect(
+                ui,
+                t(
+                  language,
+                  type === 'ConfirmDelete' ? 'confirm_delete_title' : 'confirm_command_title',
+                ),
+              )
+              expect(rendered).toContain(t(language, 'confirm_prompt'))
+              ui.mockInput.pressKey('END')
+              expect(await frame()).toContain(t(language, 'confirm_prompt'))
+            }
+            expect(executed).toBe(false)
+            ui.mockInput.pressEscape()
+            expect(app.state.overlay).toBeNull()
+            expect(executed).toBe(false)
           }
-          else {
-            modalRect(ui, t(language, type === 'ConfirmDelete' ? 'confirm_delete_title' : 'confirm_command_title'))
-            expect(rendered).toContain(t(language, 'confirm_prompt'))
-            ui.mockInput.pressKey('END')
-            expect(await frame()).toContain(t(language, 'confirm_prompt'))
-          }
-          expect(executed).toBe(false)
-          ui.mockInput.pressEscape()
-          expect(app.state.overlay).toBeNull()
-          expect(executed).toBe(false)
         }
-      }
-    }, width, height)
+      },
+      width,
+      height,
+    )
   }
 })
 
@@ -368,7 +478,10 @@ async function isolated(run, setup = () => {}) {
       writeFileSync(path, `#!${process.execPath}\n${body}`)
       chmodSync(path, 0o755)
     }
-    executable('mise', `const args=process.argv.slice(2);console.log(args[0]==='config' || args[0]==='registry' || args[0]==='ls-remote' ? '[]' : '{}')`)
+    executable(
+      'mise',
+      `const args=process.argv.slice(2);console.log(args[0]==='config' || args[0]==='registry' || args[0]==='ls-remote' ? '[]' : '{}')`,
+    )
     setup({ dir, executable })
     const script = `
       import { createTestRenderer } from '@opentui/core/testing';
@@ -429,7 +542,11 @@ async function isolated(run, setup = () => {}) {
       new Response(proc.stderr).text(),
       proc.exited,
     ])
-    expect({ code, stderr: code ? stderr : '', stdout: code ? stdout : '' }).toEqual({ code: 0, stderr: '', stdout: '' })
+    expect({ code, stderr: code ? stderr : '', stdout: code ? stdout : '' }).toEqual({
+      code: 0,
+      stderr: '',
+      stdout: '',
+    })
   }
   finally {
     rmSync(dir, { recursive: true, force: true })
@@ -438,7 +555,8 @@ async function isolated(run, setup = () => {}) {
 
 test('config copy preserves content and reports isolated clipboard failures', async () => {
   for (const mode of ['ok', 'unsupported', 'missing-file', 'failure', 'missing-command']) {
-    await isolated(`
+    await isolated(
+      `
       const path = dir + ${JSON.stringify(mode === 'unsupported' ? '/.tool-versions' : '/mise.toml')};
       const content = '[tools]\\nnode = "22"\\n';
       if (${JSON.stringify(mode)} !== 'missing-file') writeFileSync(path, content);
@@ -459,14 +577,22 @@ test('config copy preserves content and reports isolated clipboard failures', as
         assert.equal(readFileSync(dir+'/clipboard','utf8'), content);
         assert.equal(app.state.status, t('en','config_copied',{path}));
       } else assert.match(app.state.status, mode === 'failure' ? /clipboard fixture failure/ : mode === 'missing-command' ? /not found|ENOENT/ : /ENOENT/);
-    `, ({ dir, executable }) => {
-      if (mode !== 'missing-command') {
-        executable(
-          process.platform === 'darwin' ? 'pbcopy' : process.platform === 'linux' ? 'wl-copy' : 'clip',
-          mode === 'failure' ? `console.error('clipboard fixture failure');process.exit(1)` : `await Bun.write(${JSON.stringify(join(dir, 'clipboard'))}, await Bun.stdin.text())`,
-        )
-      }
-    })
+    `,
+      ({ dir, executable }) => {
+        if (mode !== 'missing-command') {
+          executable(
+            process.platform === 'darwin'
+              ? 'pbcopy'
+              : process.platform === 'linux'
+                ? 'wl-copy'
+                : 'clip',
+            mode === 'failure'
+              ? `console.error('clipboard fixture failure');process.exit(1)`
+              : `await Bun.write(${JSON.stringify(join(dir, 'clipboard'))}, await Bun.stdin.text())`,
+          )
+        }
+      },
+    )
   }
 })
 
@@ -499,7 +625,8 @@ test('shifted Kitty and raw keys preserve uppercase actions and text', async () 
 })
 
 test('tool object snapshots preserve versions and precise deletion with visible errors', async () => {
-  await isolated(`
+  await isolated(
+    `
     await app.refresh();
     assert.equal(app.state.status, '');
     app.jumpToPage('Tools');
@@ -544,12 +671,21 @@ test('tool object snapshots preserve versions and precise deletion with visible 
     writeFileSync(dir+'/response','{}');await app.refresh();
     assert.equal(app.state.snapshot.tools.length,0);
     assert.equal(app.state.status,'');
-  `, ({ dir, executable }) => {
-    writeFileSync(join(dir, 'response'), JSON.stringify({
-      'node': [{ version: '20', installed: true }, { version: '22.1.0', installed: true, active: true }],
-      'cargo:工具': [{ version: '1', requested_version: '', source: null }],
-    }))
-    executable('mise', `
+  `,
+    ({ dir, executable }) => {
+      writeFileSync(
+        join(dir, 'response'),
+        JSON.stringify({
+          'node': [
+            { version: '20', installed: true },
+            { version: '22.1.0', installed: true, active: true },
+          ],
+          'cargo:工具': [{ version: '1', requested_version: '', source: null }],
+        }),
+      )
+      executable(
+        'mise',
+        `
       import {readFileSync,appendFileSync} from 'node:fs';
       const dir=${JSON.stringify(dir)},args=process.argv.slice(2);
       if(args[0]==='ls'){
@@ -558,8 +694,10 @@ test('tool object snapshots preserve versions and precise deletion with visible 
         console.log(raw);
       }else if(args[0]==='uninstall')appendFileSync(dir+'/args',JSON.stringify(args)+'\\n');
       else console.log(args[0]==='config' ? '[]' : '{}');
-    `)
-  })
+    `,
+      )
+    },
+  )
 })
 
 test('overlay flow search owns letters and cancellation restores the prior query', async () => {
@@ -567,7 +705,15 @@ test('overlay flow search owns letters and cancellation restores the prior query
     const path = join(dir, 'mise.toml')
     writeFileSync(path, '[tools]\n')
     app.state.configTarget = { path, create: false }
-    app.state.overlay = { type: 'Picker', level: 'registry', tools, backends: ['All'], filterIdx: 0, search: 'tool-', selected: 2 }
+    app.state.overlay = {
+      type: 'Picker',
+      level: 'registry',
+      tools,
+      backends: ['All'],
+      filterIdx: 0,
+      search: 'tool-',
+      selected: 2,
+    }
     const ov = app.state.overlay
     ui.mockInput.pressKey('/')
     ui.mockInput.pressKey('u', { ctrl: true })
@@ -591,7 +737,8 @@ test('overlay flow search owns letters and cancellation restores the prior query
 })
 
 test('command target picker and custom tool preserve exact specs and explicit paths', async () => {
-  await isolated(`
+  await isolated(
+    `
     const path=dir+'/config with spaces.toml', other=dir+'/other.toml';
     writeFileSync(path,'[tools]\\n');writeFileSync(other,'[tools]\\n');
     process.env.MISE_GLOBAL_CONFIG_FILE=other;
@@ -613,11 +760,14 @@ test('command target picker and custom tool preserve exact specs and explicit pa
       ['use','--yes','--path',path,'cargo:pG@1.2.3'],
     ]);
     assert.ok(app.state.logs.some(log=>log.command.includes(path)));
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('config editor, control scrolling and uppercase navigation stay distinct', async () => {
-  await isolated(`
+  await isolated(
+    `
     app.state.snapshot.configs=[{path:dir+'/mise.toml',tools:[]}];
     app.jumpToPage('Config');ui.mockInput.pressEnter();
     ui.mockInput.pressKey('e');
@@ -641,15 +791,23 @@ test('config editor, control scrolling and uppercase navigation stay distinct', 
     ui.mockInput.pressKey('d',{ctrl:true});assert.equal(app.state.selected,5);
     ui.mockInput.pressKey('u',{ctrl:true});assert.equal(app.state.selected,0);
     assert.equal(app.state.page,'Tools');assert.equal(app.state.overlay,null);
-  `, ({ dir, executable }) => {
-    executable('mise', `import {appendFileSync} from 'node:fs';const args=process.argv.slice(2);if(args[0]==='edit')appendFileSync(${JSON.stringify(join(dir, 'args'))},JSON.stringify(args)+'\\n');else console.log(args[0]==='config' ? '[]' : '{}')`)
-  })
+  `,
+    ({ dir, executable }) => {
+      executable(
+        'mise',
+        `import {appendFileSync} from 'node:fs';const args=process.argv.slice(2);if(args[0]==='edit')appendFileSync(${JSON.stringify(join(dir, 'args'))},JSON.stringify(args)+'\\n');else console.log(args[0]==='config' ? '[]' : '{}')`,
+      )
+    },
+  )
 })
 
 test('all text overlays accept shifted punctuation without command modifiers', async () => {
   await fixture(async ({ app, ui }) => {
     for (const [overlay, field] of [
-      [{ type: 'CommandPalette', commands: [], searching: true, search: '', selected: 0 }, 'search'],
+      [
+        { type: 'CommandPalette', commands: [], searching: true, search: '', selected: 0 },
+        'search',
+      ],
       [{ type: 'CommandBuilder', mode: 'input', args: '' }, 'args'],
       [{ type: 'Picker', level: 'registry', searching: true, search: '', selected: 0 }, 'search'],
     ]) {
@@ -666,7 +824,9 @@ test('all text overlays accept shifted punctuation without command modifiers', a
 })
 
 function recordedMise({ dir, executable }) {
-  executable('mise', `
+  executable(
+    'mise',
+    `
     import {appendFileSync,existsSync,writeFileSync} from 'node:fs';
     const args=process.argv.slice(2),dir=${JSON.stringify(dir)};
     if(args.includes('--help') || args.includes('-h')) console.log('fixture help');
@@ -679,11 +839,13 @@ function recordedMise({ dir, executable }) {
     } else if(args[0]==='registry') console.log(JSON.stringify([{short:'example',backends:['cargo']}]));
     else if(args[0]==='ls-remote') console.log(JSON.stringify([{version:'1.2.3'}]));
     else console.log(args[0]==='config' ? '[]' : '{}');
-  `)
+  `,
+  )
 }
 
 test('config target discovery rejects malformed records without discarding the snapshot or target', async () => {
-  await isolated(`
+  await isolated(
+    `
     await app.refresh();assert.equal(app.state.status,'');
     assert.deepEqual(app.state.snapshot.configs.map(config=>config.path),[resolve('relative.toml'),dir+'/global.toml']);
     assert.deepEqual(app.state.snapshot.configs[0].tools,[]);
@@ -709,22 +871,34 @@ test('config target discovery rejects malformed records without discarding the s
     assert.deepEqual(app.state.snapshot.configs,[]);
     assert.equal(app.state.configTarget,target);
     assert.equal(app.state.status,'');
-  `, ({ dir, executable }) => {
-    writeFileSync(join(dir, 'global.toml'), '[tools]\n')
-    writeFileSync(join(dir, 'configs'), JSON.stringify([{ path: 'relative.toml' }, { path: join(dir, 'global.toml'), tools: ['node'] }]))
-    executable('mise', `
+  `,
+    ({ dir, executable }) => {
+      writeFileSync(join(dir, 'global.toml'), '[tools]\n')
+      writeFileSync(
+        join(dir, 'configs'),
+        JSON.stringify([
+          { path: 'relative.toml' },
+          { path: join(dir, 'global.toml'), tools: ['node'] },
+        ]),
+      )
+      executable(
+        'mise',
+        `
       import {readFileSync} from 'node:fs';
       if(process.argv[2]==='config'){
         const raw=readFileSync(${JSON.stringify(join(dir, 'configs'))},'utf8');
         if(raw==='FAIL'){console.error('config fixture denied');process.exit(2)}
         console.log(raw);
       }else console.log('{}');
-    `)
-  })
+    `,
+      )
+    },
+  )
 })
 
 test('config target F2 deduplicates files and Config Enter chooses without changing inventory', async () => {
-  await isolated(`
+  await isolated(
+    `
     const project=dir+'/project.toml',global=dir+'/global config.toml',unsupported=dir+'/.tool-versions';
     for(const path of [project,global,unsupported])writeFileSync(path,'');
     app.state.snapshot.configs=[
@@ -749,11 +923,14 @@ test('config target F2 deduplicates files and Config Enter chooses without chang
     app.jumpToPage('Config');app.state.selected=1;ui.mockInput.pressEnter();
     assert.equal(app.state.configTarget.path,global);assert.equal(app.state.page,'Config');
     assert.equal(app.state.snapshot.tools,inventory);assert.deepEqual(argv(),[]);
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('config target path validation rejects invalid and vanished files while keeping pending input', async () => {
-  await isolated(`
+  await isolated(
+    `
     const valid=dir+'/valid.toml';writeFileSync(valid,'');
     mkdirSync(dir+'/directory.toml');
     symlinkSync(dir+'/absent.toml',dir+'/dangling.toml');
@@ -777,11 +954,14 @@ test('config target path validation rejects invalid and vanished files while kee
     assert.equal(app.state.configTarget.path,valid);assert.deepEqual(argv(),[]);
     ui.mockInput.pressKey('F2');ui.mockInput.pressEscape();
     assert.equal(app.state.overlay.input,'cargo:example@1.2.3');
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('config target creation approval is write-free and consumed after actual creation', async () => {
-  await isolated(`
+  await isolated(
+    `
     const path=dir+'/new config.toml';
     await inputTarget(path);
     assert.equal(app.state.overlay.type,'ConfirmCommand');
@@ -799,11 +979,14 @@ test('config target creation approval is write-free and consumed after actual cr
     rmSync(path);app.openCustomTool();type('cargo:example@2');ui.mockInput.pressEnter();
     assert.equal(app.state.overlay.input,'cargo:example@2');
     assert.equal(argv().length,1);assert.equal(existsSync(path),false);
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('config target absent target resumes only the captured requested flow and cancel does nothing', async () => {
-  await isolated(`
+  await isolated(
+    `
     const path=dir+'/target.toml';writeFileSync(path,'');
     app.state.snapshot.configs=[{path,tools:[]}];
     app.state.snapshot.tools=[{name:'cargo:example',version:'1'},{name:'other',version:'2'}];
@@ -825,12 +1008,17 @@ test('config target absent target resumes only the captured requested flow and c
     app.state.configTarget=null;
     ui.mockInput.pressKey('A');ui.mockInput.pressEnter();
     assert.equal(app.state.overlay.type,'CustomTool');assert.deepEqual(argv(),[]);
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('navigation digits preserve list selection and sidebar browsing never steals focus', async () => {
   await fixture(async ({ app, ui }) => {
-    app.state.snapshot.tools = [{ name: 'node', version: '20' }, { name: 'node', version: '22' }]
+    app.state.snapshot.tools = [
+      { name: 'node', version: '20' },
+      { name: 'node', version: '22' },
+    ]
     ui.mockInput.pressKey('2')
     expect(app.state.focus).toBe('List')
     ui.mockInput.pressKey('j')
@@ -850,7 +1038,18 @@ test('navigation digits preserve list selection and sidebar browsing never steal
     expect(app.state.focus).toBe('Navigation')
     ui.mockInput.pressEnter()
     expect(app.state.focus).toBe('List')
-    for (const [digit, page] of [['1', 'Dashboard'], ['2', 'Tools'], ['3', 'Updates'], ['4', 'Tasks'], ['5', 'Environment'], ['6', 'Config'], ['7', 'System'], ['8', 'Preferences'], ['9', 'Console'], ['0', 'Logs']]) {
+    for (const [digit, page] of [
+      ['1', 'Dashboard'],
+      ['2', 'Tools'],
+      ['3', 'Updates'],
+      ['4', 'Tasks'],
+      ['5', 'Environment'],
+      ['6', 'Config'],
+      ['7', 'System'],
+      ['8', 'Preferences'],
+      ['9', 'Console'],
+      ['0', 'Logs'],
+    ]) {
       ui.mockInput.pressKey(digit)
       expect(app.state.page).toBe(page)
       expect(app.state.focus).toBe('List')
@@ -867,7 +1066,8 @@ test('navigation digits preserve list selection and sidebar browsing never steal
 })
 
 test('navigation details rejects list actions and visible predicates match rendered selection', async () => {
-  await isolated(`
+  await isolated(
+    `
     const path=dir+'/target.toml';writeFileSync(path,'');
     app.state.snapshot.tools=[{name:'node',version:'20'},{name:'node',version:'22'}];
     app.state.snapshot.configs=[{path,tools:['special-tool']}];
@@ -901,13 +1101,18 @@ test('navigation details rejects list actions and visible predicates match rende
       assert.equal(app.state.overlay,null);assert.deepEqual(argv(),[]);
     }
     app.jumpToPage('Dashboard');ui.mockInput.pressEnter();assert.deepEqual(argv(),[]);
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('overlay flow page and palette searches restore cursors and delete entire graphemes', async () => {
   await fixture(async ({ app, ui }) => {
     app.jumpToPage('Tools')
-    app.state.snapshot.tools = [{ name: 'old-a', version: '1' }, { name: 'old-b', version: '2' }]
+    app.state.snapshot.tools = [
+      { name: 'old-a', version: '1' },
+      { name: 'old-b', version: '2' },
+    ]
     app.state.search = 'old'
     app.state.selected = 1
     ui.mockInput.pressKey('/')
@@ -919,9 +1124,15 @@ test('overlay flow page and palette searches restore cursors and delete entire g
     for (const [overlay, field] of [
       [{ type: 'Search', previousSearch: '', previousSelected: 0 }, null],
       [{ type: 'CustomTool', input: '' }, 'input'],
-      [{ type: 'CommandPalette', commands: [], searching: true, search: '', selected: 0 }, 'search'],
+      [
+        { type: 'CommandPalette', commands: [], searching: true, search: '', selected: 0 },
+        'search',
+      ],
       [{ type: 'CommandBuilder', command: { name: 'install' }, mode: 'input', args: '' }, 'args'],
-      [{ type: 'Picker', level: 'registry', tools: [], searching: true, search: '', selected: 0 }, 'search'],
+      [
+        { type: 'Picker', level: 'registry', tools: [], searching: true, search: '', selected: 0 },
+        'search',
+      ],
       [{ type: 'ConfigTarget', mode: 'path', input: '', search: '', selected: 0 }, 'input'],
     ]) {
       app.state.overlay = overlay
@@ -943,7 +1154,8 @@ test('overlay flow page and palette searches restore cursors and delete entire g
 })
 
 test('overlay flow direct versions and registry backend chains restore only their actual parents', async () => {
-  await isolated(`
+  await isolated(
+    `
     const path=dir+'/target.toml';writeFileSync(path,'');app.state.configTarget={path,create:false};
     app.state.snapshot.tools=[{name:'cargo:example',version:'1'}];app.jumpToPage('Tools');
     await app.openVersionsForAction(VERSION_INTENT.Use);
@@ -964,11 +1176,14 @@ test('overlay flow direct versions and registry backend chains restore only thei
     assert.equal(app.state.overlay.toolSpecName,'cargo:single');
     ui.mockInput.pressEscape();assert.equal(app.state.overlay,root);assert.equal(root.selected,1);
     ui.mockInput.pressCtrlC();assert.equal(app.state.overlay,null);assert.deepEqual(argv(),[]);
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('overlay flow late registry version and help responses cannot resurrect cancelled overlays', async () => {
-  await isolated(`
+  await isolated(
+    `
     const path=dir+'/target.toml';writeFileSync(path,'');app.state.configTarget={path,create:false};
     app.state.snapshot.tools=[{name:'cargo:example',version:'1'}];app.jumpToPage('Tools');
     for(const kind of ['registry','ls-remote','help']) {
@@ -991,8 +1206,11 @@ test('overlay flow late registry version and help responses cannot resurrect can
       assert.equal(app.state.overlay,replacement);assert.equal(replacement.input,'retained');
       ui.mockInput.pressCtrlC();
     }
-  `, ({ dir, executable }) => {
-    executable('mise', `
+  `,
+    ({ dir, executable }) => {
+      executable(
+        'mise',
+        `
       import {watch,existsSync,writeFileSync} from 'node:fs';
       const dir=${JSON.stringify(dir)},args=process.argv.slice(2),kind=args.includes('--help')||args.includes('-h')?'help':args[0];
       if(['registry','ls-remote','help'].includes(kind)){
@@ -1002,12 +1220,15 @@ test('overlay flow late registry version and help responses cannot resurrect can
         });
         console.log(kind==='registry'?'[{"short":"example","backends":["cargo"]}]':kind==='help'?'Fixture help':'[{"version":"1.2.3"}]');
       }else console.log(kind==='config'?'[]':'{}');
-    `)
-  })
+    `,
+      )
+    },
+  )
 })
 
 test('overlay flow remote failures remain visible and retry in place for registry versions and help', async () => {
-  await isolated(`
+  await isolated(
+    `
     const path=dir+'/target.toml';writeFileSync(path,'');app.state.configTarget={path,create:false};
     app.state.snapshot.tools=[{name:'cargo:example',version:'1'}];app.jumpToPage('Tools');
     for(const kind of ['registry','ls-remote','help']) {
@@ -1029,9 +1250,12 @@ test('overlay flow remote failures remain visible and retry in place for registr
       assert.doesNotMatch(await frame(),/fixture denied/);
       ui.mockInput.pressCtrlC();assert.equal(app.state.overlay,null);
     }
-  `, ({ dir, executable }) => {
-    writeFileSync(join(dir, 'failure'), '')
-    executable('mise', `
+  `,
+    ({ dir, executable }) => {
+      writeFileSync(join(dir, 'failure'), '')
+      executable(
+        'mise',
+        `
       import {readFileSync} from 'node:fs';
       const args=process.argv.slice(2),kind=args.includes('--help')||args.includes('-h')?'help':args[0];
       if(readFileSync(${JSON.stringify(join(dir, 'failure'))},'utf8')===kind){console.error('fixture denied '+kind);process.exit(2)}
@@ -1039,12 +1263,15 @@ test('overlay flow remote failures remain visible and retry in place for registr
       else if(kind==='ls-remote')console.log('[{"version":"1.2.3"}]');
       else if(kind==='help')console.log('Recovered help');
       else console.log(kind==='config'?'[]':'{}');
-    `)
-  })
+    `,
+      )
+    },
+  )
 })
 
 test('command target updates capture current marked and visible sets before confirmation', async () => {
-  await isolated(`
+  await isolated(
+    `
     const updates=[{name:'alpha',current:'1',latest:'2'},{name:'beta',current:'1',latest:'2'},{name:'bravo',current:'1',latest:'2'}];
     for(const mode of ['current','marked','visible']) {
       app.state.snapshot.updates=updates;app.jumpToPage('Updates');
@@ -1068,11 +1295,14 @@ test('command target updates capture current marked and visible sets before conf
     app.state.snapshot.updates=[];app.jumpToPage('Updates');
     ui.mockInput.pressEnter();ui.mockInput.pressKey('U');
     assert.equal(app.state.overlay,null);assert.equal(argv().length,3);
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('command target expert upgrade confirmation returns to the same builder and never injects a target', async () => {
-  await isolated(`
+  await isolated(
+    `
     const path=dir+'/target.toml';writeFileSync(path,'');app.state.configTarget={path,create:false};
     app.state.commands=[{name:'upgrade',description:'Upgrade tools'},{name:'doctor',description:'Diagnose'}];
     app.openCommandPalette();ui.mockInput.pressKey('/');type('upgrade');ui.mockInput.pressEnter();
@@ -1094,11 +1324,14 @@ test('command target expert upgrade confirmation returns to the same builder and
     type('cargo:example');ui.mockInput.pressEnter();ui.mockInput.pressEnter();
     await finished(1);
     assert.deepEqual(argv(),[['upgrade','cargo:example']]);assert.equal(app.state.overlay,null);
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('command target missing executable nonzero exit and completion callback failures stay observable', async () => {
-  await isolated(`
+  await isolated(
+    `
     const task=app.executeBackground(['install','--yes','bad@1'],'failure');
     await finished(1);
     assert.equal(task.status,'failed');assert.match(task.output,/fixture install failure/);
@@ -1116,17 +1349,23 @@ test('command target missing executable nonzero exit and completion callback fai
     await app.executeCommand(['doctor'],false);
     assert.equal(app.state.logs[0].success,false);assert.match(app.state.logs[0].output,/mise|ENOENT|not found/i);
     assert.equal(app.state.snapshot,snapshot);
-  `, ({ executable }) => {
-    executable('mise', `
+  `,
+    ({ executable }) => {
+      executable(
+        'mise',
+        `
       const args=process.argv.slice(2);
       if(args.includes('bad@1')){console.error('fixture install failure');process.exit(7)}
       console.log(args[0]==='config'?'[]':'{}');
-    `)
-  })
+    `,
+      )
+    },
+  )
 })
 
 test('command target closed output streams do not finish a task before process exit', async () => {
-  await isolated(`
+  await isolated(
+    `
     const task=app.executeBackground(['install','--yes','slow@1'],'slow');
     try {
       await until(()=>existsSync(dir+'/closed'),'closed streams');
@@ -1134,8 +1373,11 @@ test('command target closed output streams do not finish a task before process e
     } finally { writeFileSync(dir+'/release','') }
     await finished(1);
     assert.equal(task.status,'failed');assert.equal(app.state.logs[0].success,false);
-  `, ({ dir, executable }) => {
-    executable('mise', `
+  `,
+    ({ dir, executable }) => {
+      executable(
+        'mise',
+        `
       import {closeSync,watch,existsSync,writeFileSync} from 'node:fs';
       const dir=${JSON.stringify(dir)};
       if(process.argv[2]==='install'){
@@ -1146,12 +1388,15 @@ test('command target closed output streams do not finish a task before process e
         });
         process.exit(9);
       }else console.log(process.argv[2]==='config'?'[]':'{}');
-    `)
-  })
+    `,
+      )
+    },
+  )
 })
 
 test('command target failed use consumes creation authorization only when a file was actually created', async () => {
-  await isolated(`
+  await isolated(
+    `
     for(const name of ['missing','created']) {
       const path=dir+'/'+name+'.toml';app.state.configTarget={path,create:true};
       assert.equal(app.useTool(name+'@1'),true);
@@ -1160,18 +1405,24 @@ test('command target failed use consumes creation authorization only when a file
       assert.equal(app.state.configTarget.create,name==='missing');
       assert.equal(existsSync(path),name==='created');
     }
-  `, ({ executable }) => {
-    executable('mise', `
+  `,
+    ({ executable }) => {
+      executable(
+        'mise',
+        `
       import {writeFileSync} from 'node:fs';
       const args=process.argv.slice(2);
       if(args.at(-1)==='created@1')writeFileSync(args[args.indexOf('--path')+1],'[tools]\\n');
       console.error('fixture use denied');process.exit(3);
-    `)
-  })
+    `,
+      )
+    },
+  )
 })
 
 test('command target refresh and task prepend preserve the selected entity', async () => {
-  await isolated(`
+  await isolated(
+    `
     await app.refresh();app.jumpToPage('Tools');app.state.selected=1;
     const selected=app.selectedTool();
     writeFileSync(dir+'/tools','{"aaa":[{"version":"1"}],"node":[{"version":"20"},{"version":"22"}]}');
@@ -1188,129 +1439,174 @@ test('command target refresh and task prepend preserve the selected entity', asy
     app.state.selectedUpdates=new Set(['node','vanished']);await app.refresh();
     assert.equal(app.state.selectedUpdates.has('vanished'),false);
     assert.equal(app.state.selectedUpdates.has('node'),true);
-  `, ({ dir, executable }) => {
-    writeFileSync(join(dir, 'tools'), '{"node":[{"version":"20"},{"version":"22"}]}')
-    executable('mise', `
+  `,
+    ({ dir, executable }) => {
+      writeFileSync(join(dir, 'tools'), '{"node":[{"version":"20"},{"version":"22"}]}')
+      executable(
+        'mise',
+        `
       import {readFileSync} from 'node:fs';
       const kind=process.argv[2];
       console.log(kind==='ls'?readFileSync(${JSON.stringify(join(dir, 'tools'))},'utf8'):kind==='outdated'?'[{"name":"node","current":"20","latest":"22"}]':kind==='config'?'[]':'{}');
-    `)
-  })
+    `,
+      )
+    },
+  )
 })
 
 test('layout target narrow lists keep the last row highlighted and details scroll actual output', async () => {
-  await fixture(async ({ app, ui, frame }) => {
-    app.state.snapshot.tools = tools.map((tool, index) => ({ ...tool, version: `version-${index}` }))
-    app.jumpToPage('Tools')
-    ui.mockInput.pressKey('END')
-    await frame()
-    expect(highlighted(ui, 'tool-34')).toBe(true)
-    app.state.logs = [{ command: 'fixture output', output: Array.from({ length: 60 }, (_, index) => `OUTPUT-${index}`).join('\n'), success: true }]
-    app.jumpToPage('Logs')
-    ui.mockInput.pressEnter()
-    const first = await frame()
-    ui.mockInput.pressKey('d', { ctrl: true })
-    expect(await frame()).not.toBe(first)
-    ui.mockInput.pressKey('END')
-    expect(await frame()).toContain('OUTPUT-59')
-    ui.mockInput.pressKey('HOME')
-    expect(await frame()).toBe(first)
-  }, 70, 18)
+  await fixture(
+    async ({ app, ui, frame }) => {
+      app.state.snapshot.tools = tools.map((tool, index) => ({
+        ...tool,
+        version: `version-${index}`,
+      }))
+      app.jumpToPage('Tools')
+      ui.mockInput.pressKey('END')
+      await frame()
+      expect(highlighted(ui, 'tool-34')).toBe(true)
+      app.state.logs = [
+        {
+          command: 'fixture output',
+          output: Array.from({ length: 60 }, (_, index) => `OUTPUT-${index}`).join('\n'),
+          success: true,
+        },
+      ]
+      app.jumpToPage('Logs')
+      ui.mockInput.pressEnter()
+      const first = await frame()
+      ui.mockInput.pressKey('d', { ctrl: true })
+      expect(await frame()).not.toBe(first)
+      ui.mockInput.pressKey('END')
+      expect(await frame()).toContain('OUTPUT-59')
+      ui.mockInput.pressKey('HOME')
+      expect(await frame()).toBe(first)
+    },
+    70,
+    18,
+  )
 })
 
 test('layout target native EN ZH frames retain targets input paths and local confirmation hints', async () => {
   for (const language of ['en', 'zh']) {
-    for (const [width, height] of [[100, 24], [70, 18]]) {
-      await fixture(async ({ app, ui, frame, dir }) => {
-        app.state.language = language
-        const path = join(dir, 'config with spaces.toml')
-        writeFileSync(path, '[tools]\n')
-        app.state.snapshot.configs = [{ path, tools: ['node'] }]
-        expect(await frame()).toContain('F2')
-        app.openConfigTarget()
-        await frame()
-        modalRect(ui, t(language, 'config_target_title'))
-        expect(highlighted(ui, 'config with spaces.toml')).toBe(true)
-        ui.mockInput.pressEnter()
-        expect(await frame()).toContain('F2')
-        for (const intent of [VERSION_INTENT.Use, VERSION_INTENT.Install]) {
-          app.state.overlay = { type: 'Picker', parent: null, level: 'versions', intent, toolSpecName: 'cargo:example', versions, selected: 34 }
-          const rendered = await frame()
-          modalRect(ui, t(language, 'picker_versions'))
-          expect(highlighted(ui, 'v34')).toBe(true)
-          if (intent === VERSION_INTENT.Install)
-            expect(rendered).toContain(t(language, 'install_only_hint'))
-          else expect(rendered).toContain('config with spaces.toml')
-        }
-        app.openCustomTool()
-        expect(await frame()).toContain('config with spaces.toml')
-        ui.mockInput.pressKey('F2')
-        ui.mockInput.pressKey('END')
-        ui.mockInput.pressEnter()
-        const candidate = join(dir, 'new config.toml')
-        for (const key of candidate) ui.mockInput.pressKey(key)
-        expect(await frame()).toContain('new config.toml')
-        modalRect(ui, t(language, 'config_target_title'))
-        ui.mockInput.pressEnter()
-        expect(existsSync(candidate)).toBe(false)
-        expect(await frame()).toContain(t(language, 'confirm_prompt'))
-        modalRect(ui, t(language, 'confirm_command_title'))
-        ui.mockInput.pressKey('n')
-        expect(app.state.overlay.input).toBe(candidate)
-        app.state.overlay = null
-        app.state.snapshot.updates = tools.map(tool => ({ name: tool.name, current: '1', latest: '2' }))
-        app.jumpToPage('Updates')
-        ui.mockInput.pressKey('U')
-        const first = await frame()
-        expect(first).toContain(t(language, 'confirm_prompt'))
-        ui.mockInput.pressKey('END')
-        const last = await frame()
-        expect(last).toContain('tool-34')
-        expect(last).toContain(t(language, 'confirm_prompt'))
-        expect(last).not.toBe(first)
-        ui.mockInput.pressKey('n')
-      }, width, height)
+    for (const [width, height] of [
+      [100, 24],
+      [70, 18],
+    ]) {
+      await fixture(
+        async ({ app, ui, frame, dir }) => {
+          app.state.language = language
+          const path = join(dir, 'config with spaces.toml')
+          writeFileSync(path, '[tools]\n')
+          app.state.snapshot.configs = [{ path, tools: ['node'] }]
+          expect(await frame()).toContain('F2')
+          app.openConfigTarget()
+          await frame()
+          modalRect(ui, t(language, 'config_target_title'))
+          expect(highlighted(ui, 'config with spaces.toml')).toBe(true)
+          ui.mockInput.pressEnter()
+          expect(await frame()).toContain('F2')
+          for (const intent of [VERSION_INTENT.Use, VERSION_INTENT.Install]) {
+            app.state.overlay = {
+              type: 'Picker',
+              parent: null,
+              level: 'versions',
+              intent,
+              toolSpecName: 'cargo:example',
+              versions,
+              selected: 34,
+            }
+            const rendered = await frame()
+            modalRect(ui, t(language, 'picker_versions'))
+            expect(highlighted(ui, 'v34')).toBe(true)
+            if (intent === VERSION_INTENT.Install)
+              expect(rendered).toContain(t(language, 'install_only_hint'))
+            else expect(rendered).toContain('config with spaces.toml')
+          }
+          app.openCustomTool()
+          expect(await frame()).toContain('config with spaces.toml')
+          ui.mockInput.pressKey('F2')
+          ui.mockInput.pressKey('END')
+          ui.mockInput.pressEnter()
+          const candidate = join(dir, 'new config.toml')
+          for (const key of candidate) ui.mockInput.pressKey(key)
+          expect(await frame()).toContain('new config.toml')
+          modalRect(ui, t(language, 'config_target_title'))
+          ui.mockInput.pressEnter()
+          expect(existsSync(candidate)).toBe(false)
+          expect(await frame()).toContain(t(language, 'confirm_prompt'))
+          modalRect(ui, t(language, 'confirm_command_title'))
+          ui.mockInput.pressKey('n')
+          expect(app.state.overlay.input).toBe(candidate)
+          app.state.overlay = null
+          app.state.snapshot.updates = tools.map(tool => ({
+            name: tool.name,
+            current: '1',
+            latest: '2',
+          }))
+          app.jumpToPage('Updates')
+          ui.mockInput.pressKey('U')
+          const first = await frame()
+          expect(first).toContain(t(language, 'confirm_prompt'))
+          ui.mockInput.pressKey('END')
+          const last = await frame()
+          expect(last).toContain('tool-34')
+          expect(last).toContain(t(language, 'confirm_prompt'))
+          expect(last).not.toBe(first)
+          ui.mockInput.pressKey('n')
+        },
+        width,
+        height,
+      )
     }
   }
 })
 
 test('layout target long path context scrolls without losing input selection or errors', async () => {
-  await fixture(async ({ app, ui, frame }) => {
-    const path = `/${'long-directory/'.repeat(80)}last-directory/config.toml`
-    app.state.snapshot.configs = [{ path, tools: [] }]
-    app.openConfigTarget()
-    const first = await frame()
-    expect(first).toContain('PgUp/PgDn')
-    expect(highlighted(ui, 'config.toml')).toBe(true)
-    for (let index = 0; index < 10; index++) ui.renderer.stdin.emit('data', Buffer.from('\x1B[6~'))
-    expect(await frame()).not.toBe(first)
-    expect(await frame()).toContain('last-directory')
-    expect(app.state.overlay.selected).toBe(0)
-    ui.mockInput.pressKey('END')
-    ui.mockInput.pressEnter()
-    app.state.overlay.input = path
-    app.state.overlay.error = 'explicit validation failure'
-    expect(await frame()).toContain('explicit validation failure')
-    for (let index = 0; index < 10; index++) ui.renderer.stdin.emit('data', Buffer.from('\x1B[6~'))
-    expect(await frame()).toContain('last-directory')
-    expect(app.state.overlay.input).toBe(path)
-    app.state.configTarget = { path, create: false }
-    app.openCustomTool()
-    app.state.overlay.input = 'cargo:example@1'
-    app.state.overlay.error = 'explicit write failure'
-    expect(await frame()).toContain('explicit write failure')
-    for (let index = 0; index < 10; index++) ui.renderer.stdin.emit('data', Buffer.from('\x1B[6~'))
-    expect(await frame()).toContain('last-directory')
-    expect(app.state.overlay.input).toBe('cargo:example@1')
-    ui.mockInput.pressEnter()
-    expect(await frame()).toContain('Cannot use configuration:')
-    expect(app.state.overlay.input).toBe('cargo:example@1')
-    expect(app.state.consoleTasks).toEqual([])
-  }, 70, 18)
+  await fixture(
+    async ({ app, ui, frame }) => {
+      const path = `/${'long-directory/'.repeat(80)}last-directory/config.toml`
+      app.state.snapshot.configs = [{ path, tools: [] }]
+      app.openConfigTarget()
+      const first = await frame()
+      expect(first).toContain('PgUp/PgDn')
+      expect(highlighted(ui, 'config.toml')).toBe(true)
+      for (let index = 0; index < 10; index++)
+        ui.renderer.stdin.emit('data', Buffer.from('\x1B[6~'))
+      expect(await frame()).not.toBe(first)
+      expect(await frame()).toContain('last-directory')
+      expect(app.state.overlay.selected).toBe(0)
+      ui.mockInput.pressKey('END')
+      ui.mockInput.pressEnter()
+      app.state.overlay.input = path
+      app.state.overlay.error = 'explicit validation failure'
+      expect(await frame()).toContain('explicit validation failure')
+      for (let index = 0; index < 10; index++)
+        ui.renderer.stdin.emit('data', Buffer.from('\x1B[6~'))
+      expect(await frame()).toContain('last-directory')
+      expect(app.state.overlay.input).toBe(path)
+      app.state.configTarget = { path, create: false }
+      app.openCustomTool()
+      app.state.overlay.input = 'cargo:example@1'
+      app.state.overlay.error = 'explicit write failure'
+      expect(await frame()).toContain('explicit write failure')
+      for (let index = 0; index < 10; index++)
+        ui.renderer.stdin.emit('data', Buffer.from('\x1B[6~'))
+      expect(await frame()).toContain('last-directory')
+      expect(app.state.overlay.input).toBe('cargo:example@1')
+      ui.mockInput.pressEnter()
+      expect(await frame()).toContain('Cannot use configuration:')
+      expect(app.state.overlay.input).toBe('cargo:example@1')
+      expect(app.state.consoleTasks).toEqual([])
+    },
+    70,
+    18,
+  )
 })
 
 test('config target empty discovery offers project creation and preserves literal path semantics', async () => {
-  await isolated(`
+  await isolated(
+    `
     await app.refresh();assert.deepEqual(app.state.snapshot.configs,[]);
     app.openConfigTarget();ui.mockInput.pressEnter();
     assert.equal(app.state.overlay.type,'ConfirmCommand');
@@ -1333,11 +1629,14 @@ test('config target empty discovery offers project creation and preserves litera
     try { assert.throws(()=>validateConfigTarget(special),/regular file/) }
     finally { await new Promise(resolve=>server.close(resolve)) }
     assert.deepEqual(argv(),[]);
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('config target F2 returns to unchanged picker and custom input without automatic submission', async () => {
-  await isolated(`
+  await isolated(
+    `
     const first=dir+'/first.toml',second=dir+'/second.toml';
     writeFileSync(first,'');writeFileSync(second,'');
     app.state.snapshot.configs=[{path:first,tools:[]},{path:second,tools:[]}];
@@ -1359,11 +1658,14 @@ test('config target F2 returns to unchanged picker and custom input without auto
     }
     app.state.overlay={type:'Picker',parent:null,level:'versions',intent:VERSION_INTENT.Install,versions:[{version:'1'}],selected:0};
     const install=app.state.overlay;ui.mockInput.pressKey('F2');assert.equal(app.state.overlay,install);
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('navigation page commands exclude unrelated dashboard actions and Enter acts on the filtered row', async () => {
-  await isolated(`
+  await isolated(
+    `
     app.state.commands=[
       {name:'env',description:'Inspect environment'},
       {name:'exec',description:'Execute in environment'},
@@ -1382,12 +1684,15 @@ test('navigation page commands exclude unrelated dashboard actions and Enter act
     app.jumpToPage('Dashboard');app.openContextCommands();
     assert.deepEqual(app.state.overlay.commands.map(command=>command.name),['doctor']);
     ui.mockInput.pressEscape();
-  `, recordedMise)
+  `,
+    recordedMise,
+  )
 })
 
 test('config target startup selects the global file using mise environment precedence', async () => {
   for (const mode of ['home', 'xdg', 'mise-dir', 'explicit']) {
-    await isolated(`
+    await isolated(
+      `
       const {realpathSync}=await import('node:fs');
       const mode=${JSON.stringify(mode)};
       delete process.env.MISE_GLOBAL_CONFIG_FILE;
@@ -1413,21 +1718,27 @@ test('config target startup selects the global file using mise environment prece
       assert.equal(app.selectConfigTarget(project),true);await app.refresh();
       assert.equal(app.state.configTarget.path,project);
       assert.deepEqual(argv(),[]);
-    `, ({ dir, executable }) => {
-      executable('mise', `
+    `,
+      ({ dir, executable }) => {
+        executable(
+          'mise',
+          `
         import {readFileSync,appendFileSync} from 'node:fs';
         const args=process.argv.slice(2);
         if(args[0]==='config')console.log(readFileSync(${JSON.stringify(join(dir, 'configs'))},'utf8'));
         else if(['use','install','uninstall','upgrade'].includes(args[0]))appendFileSync(${JSON.stringify(join(dir, 'args'))},JSON.stringify(args)+'\\n');
         else console.log(args[0]==='registry'?'[]':'{}');
-      `)
-    })
+      `,
+        )
+      },
+    )
   }
 })
 
 test('config target startup neither creates missing globals nor overrides explicit selection', async () => {
   for (const mode of ['missing', 'invalid', 'discovery-failed', 'manual']) {
-    await isolated(`
+    await isolated(
+      `
       const mode=${JSON.stringify(mode)};
       const global=dir+'/global.toml',project=dir+'/mise.toml';
       process.env.MISE_GLOBAL_CONFIG_FILE=global;
@@ -1442,14 +1753,19 @@ test('config target startup neither creates missing globals nor overrides explic
       if(mode==='missing')assert.equal(existsSync(global),false);
       if(mode==='invalid')assert.match(app.state.status,/regular file/);
       if(mode==='discovery-failed')assert.match(app.state.status,/mise config ls --json/);
-    `, ({ dir, executable }) => {
-      executable('mise', `
+    `,
+      ({ dir, executable }) => {
+        executable(
+          'mise',
+          `
         import {readFileSync,appendFileSync} from 'node:fs';
         const args=process.argv.slice(2);
         if(args[0]==='config')console.log(readFileSync(${JSON.stringify(join(dir, 'configs'))},'utf8'));
         else if(['use','install','uninstall','upgrade'].includes(args[0]))appendFileSync(${JSON.stringify(join(dir, 'args'))},JSON.stringify(args)+'\\n');
         else console.log('{}');
-      `)
-    })
+      `,
+        )
+      },
+    )
   }
 })

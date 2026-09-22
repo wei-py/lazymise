@@ -26,11 +26,15 @@ export async function main(args = process.argv.slice(2)) {
   if (cliResult !== null)
     return cliResult
   if (args.length > 1 || args.some(arg => arg.startsWith('-'))) {
-    process.stderr.write('Usage: lazymise [project-directory]\nRun lazymise --help for all commands.\n')
+    process.stderr.write(
+      'Usage: lazymise [project-directory]\nRun lazymise --help for all commands.\n',
+    )
     return 1
   }
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    process.stderr.write('lazymise requires interactive stdin and stdout TTYs. Run it directly in a terminal.\n')
+    process.stderr.write(
+      'lazymise requires interactive stdin and stdout TTYs. Run it directly in a terminal.\n',
+    )
     return 1
   }
 
@@ -67,8 +71,12 @@ export async function main(args = process.argv.slice(2)) {
     return cleanup
   }
 
-  function onSigint() { finish(130) }
-  function onSigterm() { finish(143) }
+  function onSigint() {
+    finish(130)
+  }
+  function onSigterm() {
+    finish(143)
+  }
   function onFailure() {
     finish(1, 'Unexpected runtime failure. Terminal restored.')
   }
@@ -117,7 +125,10 @@ export async function main(args = process.argv.slice(2)) {
     await app.start()
   }
   catch {
-    await finish(1, 'Unable to start lazymise. Check that mise is installed and your terminal supports OpenTUI.')
+    await finish(
+      1,
+      'Unable to start lazymise. Check that mise is installed and your terminal supports OpenTUI.',
+    )
   }
 
   return await done

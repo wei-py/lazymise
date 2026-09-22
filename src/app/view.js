@@ -3,7 +3,16 @@ import { fg, StyledText, TextRenderable } from '@opentui/core'
 import stringWidth from 'string-width'
 import { t } from '../config/i18n.js'
 import { DEFAULT_THEME, themeColors, themeName } from '../config/themes.js'
-import { clipColumns, filterCommands, filterRegistryTools, FOCUS, layoutMode, PAGE_ORDER, preferenceItems, supportsConfigTarget } from './state.js'
+import {
+  clipColumns,
+  filterCommands,
+  filterRegistryTools,
+  FOCUS,
+  layoutMode,
+  PAGE_ORDER,
+  preferenceItems,
+  supportsConfigTarget,
+} from './state.js'
 
 const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
 
@@ -55,7 +64,10 @@ function wrap(value, width) {
 /** Keep the selected row visible and retain its position. */
 function windowContent(lines, index, size) {
   const count = Math.max(0, size)
-  const start = Math.min(Math.max(0, index - Math.floor(count / 2)), Math.max(0, lines.length - count))
+  const start = Math.min(
+    Math.max(0, index - Math.floor(count / 2)),
+    Math.max(0, lines.length - count),
+  )
   return {
     lines: lines.slice(start, start + count),
     start,
@@ -66,8 +78,21 @@ function windowContent(lines, index, size) {
 
 /** Sidebar: page navigation. */
 function navContent(s, capacity) {
-  const shortcuts = { Dashboard: '1', Tools: '2', Updates: '3', Tasks: '4', Environment: '5', Config: '6', System: '7', Preferences: '8', Console: '9', Logs: '0' }
-  const entries = PAGE_ORDER.map(page => `${page === s.page ? '▸' : ' '} ${shortcuts[page]} ${pageName(page, s.language)}`)
+  const shortcuts = {
+    Dashboard: '1',
+    Tools: '2',
+    Updates: '3',
+    Tasks: '4',
+    Environment: '5',
+    Config: '6',
+    System: '7',
+    Preferences: '8',
+    Console: '9',
+    Logs: '0',
+  }
+  const entries = PAGE_ORDER.map(
+    page => `${page === s.page ? '▸' : ' '} ${shortcuts[page]} ${pageName(page, s.language)}`,
+  )
   return {
     title: t(s.language, 'Sections'),
     ...windowContent(entries, PAGE_ORDER.indexOf(s.page), capacity),
@@ -88,7 +113,9 @@ function listContent(s, items, capacity, width) {
     case 'Dashboard': {
       const stats = [
         t(language, 'dashboard_tools_count', { count: snapshot.tools.length }),
-        t(language, 'dashboard_updates_count', { count: snapshot.updates.filter(u => u.latest !== u.current).length }),
+        t(language, 'dashboard_updates_count', {
+          count: snapshot.updates.filter(u => u.latest !== u.current).length,
+        }),
         t(language, 'dashboard_tasks_count', { count: snapshot.tasks.length }),
         t(language, 'dashboard_configs_count', { count: snapshot.configs.length }),
         '',
@@ -107,7 +134,8 @@ function listContent(s, items, capacity, width) {
     }
     case 'Updates': {
       title = t(language, 'Updates')
-      renderItem = u => `${s.selectedUpdates.has(u.name) ? '[x]' : '[ ]'} ${clipColumns(u.name, 20)}  ${clipColumns(u.current, 10)} → ${clipColumns(u.latest, 10)}`
+      renderItem = u =>
+        `${s.selectedUpdates.has(u.name) ? '[x]' : '[ ]'} ${clipColumns(u.name, 20)}  ${clipColumns(u.current, 10)} → ${clipColumns(u.latest, 10)}`
       break
     }
     case 'Tasks': {
@@ -123,20 +151,30 @@ function listContent(s, items, capacity, width) {
     }
     case 'Config': {
       title = t(language, 'Config')
-      renderItem = c => `${s.configTarget?.path === c.path ? '●' : '○'} ${clipPath(displayPath(c.path), width - 2)}${supportsConfigTarget(c.path) ? '' : ` [${t(language, 'config_target_unsupported')}]`}`
+      renderItem = c =>
+        `${s.configTarget?.path === c.path ? '●' : '○'} ${clipPath(displayPath(c.path), width - 2)}${supportsConfigTarget(c.path) ? '' : ` [${t(language, 'config_target_unsupported')}]`}`
       break
     }
     case 'Preferences': {
       return {
         title: t(language, 'preferences_title'),
-        ...windowContent(items.map(item => `${(item.kind === 'theme' ? item.id === s.theme : item.id === language) ? '●' : '○'} ${item.name}`), selected, capacity),
+        ...windowContent(
+          items.map(
+            item =>
+              `${(item.kind === 'theme' ? item.id === s.theme : item.id === language) ? '●' : '○'} ${item.name}`,
+          ),
+          selected,
+          capacity,
+        ),
       }
     }
     case 'Console': {
       title = t(language, 'Console')
       renderItem = (task) => {
         const icon = { pending: '·', running: '↻', done: '✓', failed: '✗' }[task.status] || '?'
-        const elapsed = task.startTime ? ` ${Math.round(((task.endTime || Date.now()) - task.startTime) / 1000)}s` : ''
+        const elapsed = task.startTime
+          ? ` ${Math.round(((task.endTime || Date.now()) - task.startTime) / 1000)}s`
+          : ''
         return `${icon} ${clipColumns(task.label, 40)}${clipColumns(elapsed, 8)}`
       }
       break
@@ -262,7 +300,9 @@ function detailContent(s, items) {
       if (config) {
         lines = [
           `${t(language, 'Path')}: ${config.path}`,
-          s.configTarget?.path === config.path ? t(language, 'config_target_selected', { path: config.path }) : '',
+          s.configTarget?.path === config.path
+            ? t(language, 'config_target_selected', { path: config.path })
+            : '',
           supportsConfigTarget(config.path) ? '' : t(language, 'config_target_unsupported'),
           '',
           t(language, 'Tools in config:'),
@@ -278,7 +318,9 @@ function detailContent(s, items) {
     }
     case 'Preferences': {
       lines = [
-        t(language, 'current_language', { lang: preferenceItems().find(item => item.id === language)?.name || language }),
+        t(language, 'current_language', {
+          lang: preferenceItems().find(item => item.id === language)?.name || language,
+        }),
         t(language, 'current_theme', { theme: themeName(s.theme) }),
         '',
         t(language, 'apply_selected_setting'),
@@ -289,13 +331,16 @@ function detailContent(s, items) {
     case 'Console': {
       const task = items[selected]
       if (task) {
-        const statusText = {
-          pending: t(language, 'console_pending'),
-          running: t(language, 'console_running'),
-          done: t(language, 'console_done'),
-          failed: t(language, 'console_failed'),
-        }[task.status] || task.status
-        const elapsed = task.startTime ? Math.round(((task.endTime || Date.now()) - task.startTime) / 1000) : 0
+        const statusText
+          = {
+            pending: t(language, 'console_pending'),
+            running: t(language, 'console_running'),
+            done: t(language, 'console_done'),
+            failed: t(language, 'console_failed'),
+          }[task.status] || task.status
+        const elapsed = task.startTime
+          ? Math.round(((task.endTime || Date.now()) - task.startTime) / 1000)
+          : 0
         lines = [
           `${task.label}`,
           `${t(language, 'Status')}: ${statusText}`,
@@ -339,21 +384,41 @@ function pageActionsHint(s) {
   if (s.focus === FOCUS.Details)
     return t(lang, 'details_hint')
   switch (s.page) {
-    case 'Dashboard': return t(lang, 'dashboard_hint')
-    case 'Tools': return t(lang, 'tools_hint')
-    case 'Updates': return t(lang, 'updates_hint')
-    case 'Tasks': return t(lang, 'tasks_hint')
-    case 'Environment': return t(lang, 'environment_hint')
-    case 'Config': return t(lang, 'config_hint')
-    case 'Console': return t(lang, 'console_hint')
-    case 'System': return t(lang, 'system_hint')
-    case 'Preferences': return t(lang, 'preferences_hint')
-    case 'Logs': return t(lang, 'logs_hint')
-    default: return ''
+    case 'Dashboard':
+      return t(lang, 'dashboard_hint')
+    case 'Tools':
+      return t(lang, 'tools_hint')
+    case 'Updates':
+      return t(lang, 'updates_hint')
+    case 'Tasks':
+      return t(lang, 'tasks_hint')
+    case 'Environment':
+      return t(lang, 'environment_hint')
+    case 'Config':
+      return t(lang, 'config_hint')
+    case 'Console':
+      return t(lang, 'console_hint')
+    case 'System':
+      return t(lang, 'system_hint')
+    case 'Preferences':
+      return t(lang, 'preferences_hint')
+    case 'Logs':
+      return t(lang, 'logs_hint')
+    default:
+      return ''
   }
 }
 
-function box(id, left, top, width, height, content, frameColor = COLORS.border, color = COLORS.text) {
+function box(
+  id,
+  left,
+  top,
+  width,
+  height,
+  content,
+  frameColor = COLORS.border,
+  color = COLORS.text,
+) {
   if (width < 4 || height < 2)
     return false
   const innerWidth = width - 2
@@ -372,7 +437,10 @@ function box(id, left, top, width, height, content, frameColor = COLORS.border, 
 
   const frame = [
     `${border.topLeft}${label}${border.horizontal.repeat(innerWidth - stringWidth(label))}${border.topRight}`,
-    ...Array.from({ length: innerHeight }, () => `${border.vertical}${' '.repeat(innerWidth)}${border.vertical}`),
+    ...Array.from(
+      { length: innerHeight },
+      () => `${border.vertical}${' '.repeat(innerWidth)}${border.vertical}`,
+    ),
     `${border.bottomLeft}${border.horizontal.repeat(innerWidth - stringWidth(counter))}${counter}${border.bottomRight}`,
   ]
 
@@ -395,11 +463,30 @@ function box(id, left, top, width, height, content, frameColor = COLORS.border, 
 /** Render a bordered panel with focus-aware frame color. */
 function panel(id, left, top, width, height, content, s) {
   const focused = PANEL_FOCUS[id] === s.focus
-  return box(id, left, top, width, height, { ...content, title: content.title }, focused ? COLORS.focus : COLORS.border)
+  return box(
+    id,
+    left,
+    top,
+    width,
+    height,
+    { ...content, title: content.title },
+    focused ? COLORS.focus : COLORS.border,
+  )
 }
 
 /** Show a single TextRenderable node. */
-function showNode(nodes, id, left, top, width, height, lines, color = COLORS.text, background = COLORS.background, colors) {
+function showNode(
+  nodes,
+  id,
+  left,
+  top,
+  width,
+  height,
+  lines,
+  color = COLORS.text,
+  background = COLORS.background,
+  colors,
+) {
   const node = nodes[id]
   if (!node || width <= 0 || height <= 0) {
     if (node)
@@ -410,7 +497,9 @@ function showNode(nodes, id, left, top, width, height, lines, color = COLORS.tex
   Object.assign(node, { left, top, width, height, fg: color, bg: background })
   const visible = lines.slice(0, height).map(line => clipColumns(line, width))
   if (colors) {
-    node.content = new StyledText(visible.map((line, index) => fg(colors[index] || color)(`${index ? '\n' : ''}${line}`)))
+    node.content = new StyledText(
+      visible.map((line, index) => fg(colors[index] || color)(`${index ? '\n' : ''}${line}`)),
+    )
   }
   else {
     node.content = visible.join('\n')
@@ -421,10 +510,40 @@ function showNode(nodes, id, left, top, width, height, lines, color = COLORS.tex
 function renderBox(nodes, id, boxResult) {
   if (!boxResult)
     return
-  showNode(nodes, `${id}Frame`, boxResult.frame.left, boxResult.frame.top, boxResult.frame.width, boxResult.frame.height, boxResult.frame.lines, boxResult.frame.color)
-  showNode(nodes, `${id}Inner`, boxResult.inner.left, boxResult.inner.top, boxResult.inner.width, boxResult.inner.height, boxResult.inner.lines, boxResult.inner.color, COLORS.background, boxResult.inner.colors)
+  showNode(
+    nodes,
+    `${id}Frame`,
+    boxResult.frame.left,
+    boxResult.frame.top,
+    boxResult.frame.width,
+    boxResult.frame.height,
+    boxResult.frame.lines,
+    boxResult.frame.color,
+  )
+  showNode(
+    nodes,
+    `${id}Inner`,
+    boxResult.inner.left,
+    boxResult.inner.top,
+    boxResult.inner.width,
+    boxResult.inner.height,
+    boxResult.inner.lines,
+    boxResult.inner.color,
+    COLORS.background,
+    boxResult.inner.colors,
+  )
   if (boxResult.inner.selected >= 0 && boxResult.inner.selected < boxResult.inner.height) {
-    showNode(nodes, `${id}Selection`, boxResult.inner.left, boxResult.inner.top + boxResult.inner.selected, boxResult.inner.width, 1, [padColumns(boxResult.inner.lines[boxResult.inner.selected] || '', boxResult.inner.width)], COLORS.selectionText, COLORS.selection)
+    showNode(
+      nodes,
+      `${id}Selection`,
+      boxResult.inner.left,
+      boxResult.inner.top + boxResult.inner.selected,
+      boxResult.inner.width,
+      1,
+      [padColumns(boxResult.inner.lines[boxResult.inner.selected] || '', boxResult.inner.width)],
+      COLORS.selectionText,
+      COLORS.selection,
+    )
   }
 }
 
@@ -457,12 +576,29 @@ export function createView(renderer) {
     const mode = layoutMode(width, height)
 
     // Hide all nodes first
-    for (const node of Object.values(nodes))
-      node.visible = false
+    for (const node of Object.values(nodes)) node.visible = false
 
     if (mode === 'small') {
-      showNode(nodes, 'header', 0, 0, width, 1, [t(language, 'Terminal too small')], COLORS.warning)
-      showNode(nodes, 'keys', 0, height - 1, width, 1, [t(language, 'Resize, or q/Ctrl-c to quit')], COLORS.muted)
+      showNode(
+        nodes,
+        'header',
+        0,
+        0,
+        width,
+        1,
+        [t(language, 'Terminal too small')],
+        COLORS.warning,
+      )
+      showNode(
+        nodes,
+        'keys',
+        0,
+        height - 1,
+        width,
+        1,
+        [t(language, 'Resize, or q/Ctrl-c to quit')],
+        COLORS.muted,
+      )
       renderer.requestRender()
       return { width, height, detailMaxScroll }
     }
@@ -470,9 +606,21 @@ export function createView(renderer) {
     // Header bar
     const prefix = ` LAZYMISE  ${t(language, 'config_target_header')} `
     const suffix = `  ${t(language, 'config_target_select_hint')} `
-    const target = s.configTarget ? displayPath(s.configTarget.path) : t(language, 'config_target_none')
+    const target = s.configTarget
+      ? displayPath(s.configTarget.path)
+      : t(language, 'config_target_none')
     const headerLine = `${prefix}${clipPath(target, width - stringWidth(prefix + suffix))}${suffix}`
-    showNode(nodes, 'header', 0, 0, width, 1, [padColumns(headerLine, width)], COLORS.text, COLORS.selection)
+    showNode(
+      nodes,
+      'header',
+      0,
+      0,
+      width,
+      1,
+      [padColumns(headerLine, width)],
+      COLORS.text,
+      COLORS.selection,
+    )
 
     if (mode === 'dual') {
       const navWidth = Math.floor((width - 2) / 5)
@@ -482,10 +630,26 @@ export function createView(renderer) {
       const panelHeight = height - 3
       const detailHeight = panelHeight
 
-      const navResult = panel('nav', 1, 1, navWidth, panelHeight, navContent(s, panelHeight - 2), s)
+      const navResult = panel(
+        'nav',
+        1,
+        1,
+        navWidth,
+        panelHeight,
+        navContent(s, panelHeight - 2),
+        s,
+      )
       renderBox(nodes, 'nav', navResult)
 
-      const listResult = panel('list', navWidth + 1, 1, listWidth, panelHeight, listContent(s, items, panelHeight - 2, listWidth - 3), s)
+      const listResult = panel(
+        'list',
+        navWidth + 1,
+        1,
+        listWidth,
+        panelHeight,
+        listContent(s, items, panelHeight - 2, listWidth - 3),
+        s,
+      )
       renderBox(nodes, 'list', listResult)
 
       const detail = detailViewport(s, items, detailWidth - 3, detailHeight - 2)
@@ -500,22 +664,50 @@ export function createView(renderer) {
 
       const focusedPane = s.focus
       const topId = focusedPane === FOCUS.Navigation ? 'nav' : 'list'
-      const bottomId = focusedPane === FOCUS.Details ? 'detail' : (topId === 'nav' ? 'list' : 'nav')
+      const bottomId = focusedPane === FOCUS.Details ? 'detail' : topId === 'nav' ? 'list' : 'nav'
       const detail = detailViewport(s, items, width - 5, bottomHeight - 2)
       detailMaxScroll = detail.maxScroll
-      const contentFor = (id, capacity) => id === 'nav'
-        ? navContent(s, capacity)
-        : id === 'list' ? listContent(s, items, capacity, width - 5) : detail
+      const contentFor = (id, capacity) =>
+        id === 'nav'
+          ? navContent(s, capacity)
+          : id === 'list'
+            ? listContent(s, items, capacity, width - 5)
+            : detail
 
-      const topResult = panel(topId, 1, 1, width - 2, topHeight, contentFor(topId, topHeight - 2), s)
+      const topResult = panel(
+        topId,
+        1,
+        1,
+        width - 2,
+        topHeight,
+        contentFor(topId, topHeight - 2),
+        s,
+      )
       renderBox(nodes, topId, topResult)
 
-      const bottomResult = panel(bottomId, 1, 1 + topHeight, width - 2, bottomHeight, contentFor(bottomId, bottomHeight - 2), s)
+      const bottomResult = panel(
+        bottomId,
+        1,
+        1 + topHeight,
+        width - 2,
+        bottomHeight,
+        contentFor(bottomId, bottomHeight - 2),
+        s,
+      )
       renderBox(nodes, bottomId, bottomResult)
     }
 
     // Status bar
-    showNode(nodes, 'status', 0, height - 2, width, 1, [clipColumns(renderStatus(s, app), width)], s.loading ? COLORS.warning : COLORS.muted)
+    showNode(
+      nodes,
+      'status',
+      0,
+      height - 2,
+      width,
+      1,
+      [clipColumns(renderStatus(s, app), width)],
+      s.loading ? COLORS.warning : COLORS.muted,
+    )
 
     // Key hints
     const hintsStr = `${t(language, s.page)}: ${pageActionsHint(s)}`
@@ -532,8 +724,12 @@ export function createView(renderer) {
 function renderStatus(s) {
   if (s.loading)
     return t(s.language, 'loading')
-  const active = (s.consoleTasks || []).filter(t => t.status === 'pending' || t.status === 'running')
-  const prefix = active.length ? `${t(s.language, 'status_running_count', { count: active.length })} ` : ''
+  const active = (s.consoleTasks || []).filter(
+    t => t.status === 'pending' || t.status === 'running',
+  )
+  const prefix = active.length
+    ? `${t(s.language, 'status_running_count', { count: active.length })} `
+    : ''
   if (s.status)
     return prefix + s.status
   return prefix + t(s.language, 'status_ready')
@@ -595,7 +791,8 @@ function detailViewport(s, items, width, height) {
   const content = detailContent(s, items)
   const lines = content.lines.flatMap(line => wrap(line, width))
   const capacity = Math.max(0, height)
-  const maxScroll = items.length || s.page === 'Dashboard' ? Math.max(0, lines.length - capacity) : 0
+  const maxScroll
+    = items.length || s.page === 'Dashboard' ? Math.max(0, lines.length - capacity) : 0
   const scroll = Math.max(0, Math.min(s.detailScroll, maxScroll))
   return {
     title: content.title,
@@ -610,8 +807,12 @@ function overlayHint(overlay, language) {
     return t(language, 'confirm_prompt')
   if (overlay.type === 'Search' || overlay.searching)
     return t(language, 'text_search_hint')
-  if (overlay.type === 'ConfigTarget')
-    return t(language, overlay.mode === 'path' ? 'config_target_path_hint' : 'config_target_list_hint')
+  if (overlay.type === 'ConfigTarget') {
+    return t(
+      language,
+      overlay.mode === 'path' ? 'config_target_path_hint' : 'config_target_list_hint',
+    )
+  }
   if (overlay.type === 'CustomTool')
     return t(language, 'custom_tool_hint')
   if (overlay.type === 'CommandBuilder')
@@ -654,8 +855,21 @@ function renderOverlay(nodes, s, app, width, height) {
   switch (overlay.type) {
     case 'Help': {
       title = t(language, 'help_title_full')
-      const keys = ['help_page_jump', 'help_move', 'help_tab_esc', 'help_tools_line', 'help_updates_line', 'help_global_line', 'help_config_line', 'text_search_hint']
-      const content = scrollContent(keys.flatMap(key => wrap(t(language, key), contentWidth)), overlay.scroll, capacity)
+      const keys = [
+        'help_page_jump',
+        'help_move',
+        'help_tab_esc',
+        'help_tools_line',
+        'help_updates_line',
+        'help_global_line',
+        'help_config_line',
+        'text_search_hint',
+      ]
+      const content = scrollContent(
+        keys.flatMap(key => wrap(t(language, key), contentWidth)),
+        overlay.scroll,
+        capacity,
+      )
       lines = content.lines
       counter = content.counter
       maxScroll = content.maxScroll
@@ -668,11 +882,18 @@ function renderOverlay(nodes, s, app, width, height) {
     case 'ConfigTarget': {
       title = t(language, 'config_target_title')
       if (overlay.mode === 'path') {
-        const content = scrollContent([
-          ...(overlay.error ? wrap(overlay.error, contentWidth) : []),
-          ...wrap(overlay.input, contentWidth),
-        ], overlay.scroll, capacity - 1)
-        lines = [inputLine(t(language, 'config_target_path'), overlay.input, contentWidth), ...content.lines]
+        const content = scrollContent(
+          [
+            ...(overlay.error ? wrap(overlay.error, contentWidth) : []),
+            ...wrap(overlay.input, contentWidth),
+          ],
+          overlay.scroll,
+          capacity - 1,
+        )
+        lines = [
+          inputLine(t(language, 'config_target_path'), overlay.input, contentWidth),
+          ...content.lines,
+        ]
         maxScroll = content.maxScroll
         counter = content.maxScroll ? `PgUp/PgDn ${content.counter}` : ''
         break
@@ -685,7 +906,10 @@ function renderOverlay(nodes, s, app, width, height) {
         ...(current?.path ? wrap(current.path, contentWidth) : []),
       ]
       const pathContent = scrollContent(context, overlay.scroll, Math.max(1, capacity - 4))
-      const visibleHeader = [inputLine(t(language, 'search_prompt', { query: '' }), overlay.search, contentWidth), ...pathContent.lines]
+      const visibleHeader = [
+        inputLine(t(language, 'search_prompt', { query: '' }), overlay.search, contentWidth),
+        ...pathContent.lines,
+      ]
       maxScroll = pathContent.maxScroll
       const entries = items.map((item) => {
         if (item.kind === 'path')
@@ -699,19 +923,39 @@ function renderOverlay(nodes, s, app, width, height) {
       const content = windowContent(entries, overlay.selected, capacity - visibleHeader.length)
       lines = [...visibleHeader, ...content.lines]
       selected = content.selected < 0 ? -1 : visibleHeader.length + content.selected
-      counter = pathContent.maxScroll ? `PgUp/PgDn ${pathContent.counter}  ${content.counter}` : content.counter
+      counter = pathContent.maxScroll
+        ? `PgUp/PgDn ${pathContent.counter}  ${content.counter}`
+        : content.counter
       break
     }
     case 'Picker': {
-      title = t(language, { registry: 'picker_registry', backends: 'picker_backends', versions: 'picker_versions' }[overlay.level])
-      ;({ lines, selected, counter, maxScroll } = renderPickerContent(overlay, s, contentWidth, capacity))
+      title = t(
+        language,
+        { registry: 'picker_registry', backends: 'picker_backends', versions: 'picker_versions' }[
+          overlay.level
+        ],
+      );
+      ({ lines, selected, counter, maxScroll } = renderPickerContent(
+        overlay,
+        s,
+        contentWidth,
+        capacity,
+      ))
       break
     }
     case 'CommandPalette': {
       title = t(language, overlay.context ? 'command_context' : 'command_palette')
-      const query = inputLine(t(language, 'search_prompt', { query: '' }), overlay.search || '', contentWidth)
+      const query = inputLine(
+        t(language, 'search_prompt', { query: '' }),
+        overlay.search || '',
+        contentWidth,
+      )
       const items = filterCommands(overlay.commands || [], overlay.search)
-      const content = windowContent(items.map(item => itemLine(item.name, item.description, contentWidth)), overlay.selected, Math.max(0, capacity - 1))
+      const content = windowContent(
+        items.map(item => itemLine(item.name, item.description, contentWidth)),
+        overlay.selected,
+        Math.max(0, capacity - 1),
+      )
       lines = [query, ...(items.length ? content.lines : [t(language, 'no_matching_commands')])]
       selected = content.selected < 0 ? -1 : content.selected + 1
       counter = content.counter
@@ -720,30 +964,60 @@ function renderOverlay(nodes, s, app, width, height) {
     case 'CommandBuilder': {
       title = t(language, 'command_builder', { command: `mise ${overlay.command?.name || ''}` })
       const help = overlay.loading ? t(language, 'loading') : overlay.error || overlay.help || ''
-      const helpContent = scrollContent(wrap(help, contentWidth), overlay.scroll, Math.max(0, capacity - 1))
-      lines = [inputLine(t(language, 'command_builder_args', { args: '' }), overlay.args || '', contentWidth), ...helpContent.lines]
-      selected = overlay.mode === 'input'
-        ? 0
-        : helpContent.lines.length ? (overlay.scroll >= helpContent.maxScroll && helpContent.maxScroll > 0 ? lines.length - 1 : 1) : -1
+      const helpContent = scrollContent(
+        wrap(help, contentWidth),
+        overlay.scroll,
+        Math.max(0, capacity - 1),
+      )
+      lines = [
+        inputLine(
+          t(language, 'command_builder_args', { args: '' }),
+          overlay.args || '',
+          contentWidth,
+        ),
+        ...helpContent.lines,
+      ]
+      selected
+        = overlay.mode === 'input'
+          ? 0
+          : helpContent.lines.length
+            ? overlay.scroll >= helpContent.maxScroll && helpContent.maxScroll > 0
+              ? lines.length - 1
+              : 1
+            : -1
       counter = helpContent.counter
       maxScroll = helpContent.maxScroll
       break
     }
     case 'CustomTool': {
       title = t(language, 'custom_tool')
-      const content = scrollContent([
-        ...(overlay.error ? wrap(overlay.error, contentWidth) : []),
-        ...wrap(targetHint(s), contentWidth),
-      ], overlay.scroll, capacity - 1)
-      lines = [inputLine(t(language, 'custom_tool_prompt'), overlay.input || '', contentWidth), ...content.lines]
+      const content = scrollContent(
+        [
+          ...(overlay.error ? wrap(overlay.error, contentWidth) : []),
+          ...wrap(targetHint(s), contentWidth),
+        ],
+        overlay.scroll,
+        capacity - 1,
+      )
+      lines = [
+        inputLine(t(language, 'custom_tool_prompt'), overlay.input || '', contentWidth),
+        ...content.lines,
+      ]
       maxScroll = content.maxScroll
       counter = content.maxScroll ? `PgUp/PgDn ${content.counter}` : ''
       break
     }
     case 'ConfirmDelete':
     case 'ConfirmCommand': {
-      title = t(language, overlay.type === 'ConfirmDelete' ? 'confirm_delete_title' : 'confirm_command_title')
-      const content = scrollContent(wrap(overlay.message || '', contentWidth), overlay.scroll, capacity)
+      title = t(
+        language,
+        overlay.type === 'ConfirmDelete' ? 'confirm_delete_title' : 'confirm_command_title',
+      )
+      const content = scrollContent(
+        wrap(overlay.message || '', contentWidth),
+        overlay.scroll,
+        capacity,
+      )
       lines = content.lines
       counter = content.counter
       maxScroll = content.maxScroll
@@ -757,7 +1031,19 @@ function renderOverlay(nodes, s, app, width, height) {
   const left = Math.floor((width - modalWidth) / 2)
   const renderedHeight = lines.length + 2
   const top = Math.floor((height - renderedHeight) / 2)
-  renderBox(nodes, 'modal', box('modal', left, top, modalWidth, renderedHeight, { title, lines, selected, counter }, COLORS.focus))
+  renderBox(
+    nodes,
+    'modal',
+    box(
+      'modal',
+      left,
+      top,
+      modalWidth,
+      renderedHeight,
+      { title, lines, selected, counter },
+      COLORS.focus,
+    ),
+  )
   return maxScroll
 }
 
@@ -765,12 +1051,22 @@ function renderPickerContent(overlay, s, contentWidth, capacity) {
   const { language } = s
   let entries = []
   let emptyKey = 'no_results'
-  const header = wrap(overlay.intent === 'Install' ? t(language, 'install_only_hint') : targetHint(s), contentWidth)
+  const header = wrap(
+    overlay.intent === 'Install' ? t(language, 'install_only_hint') : targetHint(s),
+    contentWidth,
+  )
   switch (overlay.level) {
     case 'registry': {
       const filter = overlay.backends?.[overlay.filterIdx || 0] || 'All'
-      header.push(t(language, 'picker_filter_label', { filter: filter === 'All' ? t(language, 'all_backends') : filter, query: `${overlay.search || ''}${overlay.searching ? '█' : ''}` }))
-      entries = filterRegistryTools(overlay).map(item => itemLine(item.name, item.description, contentWidth))
+      header.push(
+        t(language, 'picker_filter_label', {
+          filter: filter === 'All' ? t(language, 'all_backends') : filter,
+          query: `${overlay.search || ''}${overlay.searching ? '█' : ''}`,
+        }),
+      )
+      entries = filterRegistryTools(overlay).map(item =>
+        itemLine(item.name, item.description, contentWidth),
+      )
       break
     }
     case 'backends':
@@ -779,21 +1075,32 @@ function renderPickerContent(overlay, s, contentWidth, capacity) {
       break
     case 'versions':
       header.push(clipPath(overlay.toolSpecName || '', contentWidth))
-      entries = (overlay.versions || []).map(item => itemLine(item.version, item.created_at || '', contentWidth))
+      entries = (overlay.versions || []).map(item =>
+        itemLine(item.version, item.created_at || '', contentWidth),
+      )
       emptyKey = 'no_versions'
       break
   }
-  if (overlay.loading)
-    header.push(t(language, overlay.level === 'registry' ? 'loading_registry' : 'loading_versions'))
+  if (overlay.loading) {
+    header.push(
+      t(language, overlay.level === 'registry' ? 'loading_registry' : 'loading_versions'),
+    )
+  }
   if (overlay.error)
     header.unshift(...wrap(overlay.error, contentWidth))
   const context = scrollContent(header, overlay.scroll, Math.max(0, capacity - 1))
   const visibleHeader = context.lines
-  const content = windowContent(entries, Math.max(0, Math.min(overlay.selected || 0, entries.length - 1)), capacity - visibleHeader.length)
+  const content = windowContent(
+    entries,
+    Math.max(0, Math.min(overlay.selected || 0, entries.length - 1)),
+    capacity - visibleHeader.length,
+  )
   return {
     lines: [...visibleHeader, ...(entries.length ? content.lines : [t(language, emptyKey)])],
     selected: content.selected < 0 ? -1 : content.selected + visibleHeader.length,
-    counter: context.maxScroll ? `PgUp/PgDn ${context.counter}  ${content.counter}` : content.counter,
+    counter: context.maxScroll
+      ? `PgUp/PgDn ${context.counter}  ${content.counter}`
+      : content.counter,
     maxScroll: context.maxScroll,
   }
 }

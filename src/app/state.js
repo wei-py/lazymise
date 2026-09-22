@@ -103,8 +103,7 @@ export function clipColumns(value, width) {
 
 export function deleteLastGrapheme(value) {
   let last = 0
-  for (const segment of segmenter.segment(value))
-    last = segment.index
+  for (const segment of segmenter.segment(value)) last = segment.index
   return value.slice(0, last)
 }
 
@@ -114,8 +113,11 @@ export function supportsConfigTarget(path) {
 
 export function filterCommands(commands, query) {
   return query
-    ? commands.filter(command => containsCaseInsensitive(command.name, query)
-      || containsCaseInsensitive(command.description || '', query))
+    ? commands.filter(
+        command =>
+          containsCaseInsensitive(command.name, query)
+          || containsCaseInsensitive(command.description || '', query),
+      )
     : commands
 }
 
@@ -129,8 +131,11 @@ export function filterRegistryTools(overlay) {
   let filtered = overlay.tools || []
   if (overlay.search) {
     const query = overlay.search.toLowerCase()
-    filtered = filtered.filter(tool => tool.name.toLowerCase().includes(query)
-      || (tool.description && tool.description.toLowerCase().includes(query)))
+    filtered = filtered.filter(
+      tool =>
+        tool.name.toLowerCase().includes(query)
+        || (tool.description && tool.description.toLowerCase().includes(query)),
+    )
   }
   if (overlay.filterIdx > 0 && overlay.backends) {
     const backend = overlay.backends[overlay.filterIdx]

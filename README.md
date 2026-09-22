@@ -60,25 +60,25 @@ Options:
 
 ## Essential keys
 
-| Key | Action |
-|---|---|
-| `Tab` / `Shift-Tab` | Cycle panel focus; in the registry picker, cycle every discovered backend prefix; in command arguments, focus the scrollable help |
-| `h` `j` `k` `l` or arrows | Move focus, selection, details, or the focused command help viewport |
-| `1`…`8`, `9`, `0` | Open Dashboard–Preferences, Console, or Logs, with list focus |
-| `F2` | Select the exact configuration file for subsequent guided Use operations |
-| `a` | Select a target if needed, then open the registry and choose a tool, source, and version |
-| `A` | Select a target if needed, then enter a complete custom spec such as `cargo:example@1.2.3` |
-| `Enter` / `v` in Tools | Browse versions and write the chosen version to the selected file |
-| `i` | Browse versions and install one |
-| `d` | Uninstall the selected version after confirmation |
-| `Space`, `Enter` / `u`, `U` | Mark updates; confirm marked/current tools; confirm all filtered tools |
-| `m` | Open actions related to the current page |
-| `:` | Open the complete mise command catalog |
-| `/` | Filter the page list, registry, command palette, or configuration selector |
-| `Esc` | Return one overlay level, or Details → List → Navigation |
-| `Ctrl+u` in text | Clear the current input; Backspace deletes one complete grapheme |
-| `?` | Open built-in help |
-| `q` | Quit |
+| Key                         | Action                                                                                                                            |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `Tab` / `Shift-Tab`         | Cycle panel focus; in the registry picker, cycle every discovered backend prefix; in command arguments, focus the scrollable help |
+| `h` `j` `k` `l` or arrows   | Move focus, selection, details, or the focused command help viewport                                                              |
+| `1`…`8`, `9`, `0`           | Open Dashboard–Preferences, Console, or Logs, with list focus                                                                     |
+| `F2`                        | Select the exact configuration file for subsequent guided Use operations                                                          |
+| `a`                         | Select a target if needed, then open the registry and choose a tool, source, and version                                          |
+| `A`                         | Select a target if needed, then enter a complete custom spec such as `cargo:example@1.2.3`                                        |
+| `Enter` / `v` in Tools      | Browse versions and write the chosen version to the selected file                                                                 |
+| `i`                         | Browse versions and install one                                                                                                   |
+| `d`                         | Uninstall the selected version after confirmation                                                                                 |
+| `Space`, `Enter` / `u`, `U` | Mark updates; confirm marked/current tools; confirm all filtered tools                                                            |
+| `m`                         | Open actions related to the current page                                                                                          |
+| `:`                         | Open the complete mise command catalog                                                                                            |
+| `/`                         | Filter the page list, registry, command palette, or configuration selector                                                        |
+| `Esc`                       | Return one overlay level, or Details → List → Navigation                                                                          |
+| `Ctrl+u` in text            | Clear the current input; Backspace deletes one complete grapheme                                                                  |
+| `?`                         | Open built-in help                                                                                                                |
+| `q`                         | Quit                                                                                                                              |
 
 See [USAGE.md](USAGE.md) for the complete workflow and key reference.
 

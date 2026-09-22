@@ -31,5 +31,15 @@ export function loadSettings() {
 export function saveSettings(settings) {
   const dir = settingsDir()
   mkdirSync(dir, { recursive: true })
-  writeFileSync(settingsPath(), JSON.stringify({ language: settings.language || 'en', theme: isTheme(settings.theme) ? settings.theme : DEFAULT_THEME }, null, 2))
+  writeFileSync(
+    settingsPath(),
+    JSON.stringify(
+      {
+        language: settings.language || 'en',
+        theme: isTheme(settings.theme) ? settings.theme : DEFAULT_THEME,
+      },
+      null,
+      2,
+    ),
+  )
 }

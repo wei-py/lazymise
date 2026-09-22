@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "bun src/main.js",
     "lint": "eslint .",
+    "format": "npx oxfmt@latest . && eslint . --fix",
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {

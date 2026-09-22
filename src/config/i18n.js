@@ -48,7 +48,8 @@ const EN = {
   'output': 'Output',
   'success': 'Success',
   'failed': 'Failed',
-  'confirm_delete': 'Uninstall {name}?\nThis removes the installed version, not the selected config target.',
+  'confirm_delete':
+    'Uninstall {name}?\nThis removes the installed version, not the selected config target.',
   'confirm_command': 'Run {command}?\nExpert arguments determine the target.',
   'confirm_upgrade': 'Upgrade {count} tool(s) — {range}?',
   'deleted': 'Deleted {name}',
@@ -92,7 +93,8 @@ const EN = {
   'config_target_path': 'Configuration path: ',
   'config_target_invalid': 'Cannot use configuration: {error}',
   'config_target_selected': 'Write target: {path}',
-  'config_target_create': 'Create configuration {path}?\nThe file is created only when you submit Use.',
+  'config_target_create':
+    'Create configuration {path}?\nThe file is created only when you submit Use.',
   'config_target_project': 'Create current project mise.toml',
   'config_target_input': 'Enter configuration path…',
   'config_target_unsupported': 'Not a write target',
@@ -176,13 +178,18 @@ const EN = {
   'picker_filter_label': '[{filter}] Search: {query}',
 
   // ---- Help overlay ----
-  'help_page_jump': '1–8: Dashboard, Tools, Updates, Tasks, Environment, Config, System, Preferences; 9: Console; 0: Logs; [/]: previous/next page',
+  'help_page_jump':
+    '1–8: Dashboard, Tools, Updates, Tasks, Environment, Config, System, Preferences; 9: Console; 0: Logs; [/]: previous/next page',
   'help_move': 'j/k/↑/↓: move  h/l/←/→: switch focus',
   'help_tab_esc': 'Tab/Shift+Tab: cycle focus  Esc: Details → List → Navigation',
-  'help_tools_line': 'List: Enter/v use version, i install only, d confirm uninstall; a add, A custom tool',
-  'help_updates_line': 'Updates List: Space mark, Enter/u confirm marked or current, U confirm all filtered tools',
-  'help_global_line': 'F2: configuration  /: search  :: expert commands  m: page commands  r: refresh  ?: help  q: quit  Ctrl+c: cancel flow',
-  'help_config_line': 'Config List Enter selects a file. Only guided Use writes to it via --path. Install, uninstall, upgrade, tasks and expert commands do not use this target.',
+  'help_tools_line':
+    'List: Enter/v use version, i install only, d confirm uninstall; a add, A custom tool',
+  'help_updates_line':
+    'Updates List: Space mark, Enter/u confirm marked or current, U confirm all filtered tools',
+  'help_global_line':
+    'F2: configuration  /: search  :: expert commands  m: page commands  r: refresh  ?: help  q: quit  Ctrl+c: cancel flow',
+  'help_config_line':
+    'Config List Enter selects a file. Only guided Use writes to it via --path. Install, uninstall, upgrade, tasks and expert commands do not use this target.',
   'help_scroll_hint': 'j/k scroll  Esc/q back',
 
   // ---- Detail ----
@@ -423,13 +430,16 @@ const ZH = {
   'picker_filter_label': '[{filter}] 搜索：{query}',
 
   // ---- Help overlay ----
-  'help_page_jump': '1–8：仪表盘、工具、更新、任务、环境、配置、系统、偏好；9：控制台；0：日志；[/]：上一页/下一页',
+  'help_page_jump':
+    '1–8：仪表盘、工具、更新、任务、环境、配置、系统、偏好；9：控制台；0：日志；[/]：上一页/下一页',
   'help_move': 'j/k/↑/↓：移动  h/l/←/→：切换焦点',
   'help_tab_esc': 'Tab/Shift+Tab：循环焦点  Esc：详情 → 列表 → 导航',
   'help_tools_line': '工具列表：Enter/v 使用版本，i 仅安装，d 确认卸载；a 添加，A 自定义',
   'help_updates_line': '更新列表：Space 标记，Enter/u 确认已标记或当前项，U 确认当前过滤结果全部',
-  'help_global_line': 'F2：配置文件  /：搜索  :: 专家命令  m：页面命令  r：刷新  ?：帮助  q：退出  Ctrl+c：取消流程',
-  'help_config_line': '配置列表 Enter 选择文件。仅引导使用版本操作通过 --path 写入该文件；安装、卸载、升级、任务和专家命令不使用此目标。',
+  'help_global_line':
+    'F2：配置文件  /：搜索  :: 专家命令  m：页面命令  r：刷新  ?：帮助  q：退出  Ctrl+c：取消流程',
+  'help_config_line':
+    '配置列表 Enter 选择文件。仅引导使用版本操作通过 --path 写入该文件；安装、卸载、升级、任务和专家命令不使用此目标。',
   'help_scroll_hint': 'j/k 滚动  Esc/q 返回',
 
   // ---- Detail ----

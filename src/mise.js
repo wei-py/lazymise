@@ -10,8 +10,12 @@ async function miseJson(args) {
     const err = result.stderr.toString().trim()
     throw new Error(`mise ${args.join(' ')} failed: ${err || out}`)
   }
-  try { return JSON.parse(out) }
-  catch { return out }
+  try {
+    return JSON.parse(out)
+  }
+  catch {
+    return out
+  }
 }
 
 async function miseText(args) {
@@ -45,7 +49,8 @@ export async function loadSnapshot() {
 async function loadTools() {
   try {
     const entries = JSON.parse(await miseText(['ls', '--json']))
-    const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+    const isObject = value =>
+      value !== null && typeof value === 'object' && !Array.isArray(value)
     if (!isObject(entries))
       throw new Error('expected an object of tool version arrays')
     const tools = []
@@ -80,11 +85,16 @@ async function loadTools() {
         })
       }
     }
-    return tools.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : Number(b.active) - Number(a.active))
+    return tools.sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : Number(b.active) - Number(a.active),
+    )
   }
   catch (error) {
     const stderr = error.stderr?.toString().trim()
-    throw new Error(`mise ls --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`, { cause: error })
+    throw new Error(
+      `mise ls --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`,
+      { cause: error },
+    )
   }
 }
 
@@ -99,7 +109,9 @@ async function loadUpdates() {
       latest: e.latest || '',
     }))
   }
-  catch { return [] }
+  catch {
+    return []
+  }
 }
 
 async function loadTasks() {
@@ -110,12 +122,12 @@ async function loadTasks() {
     return entries.map(e => ({
       name: e.name || '',
       description: e.description || '',
-      command: Array.isArray(e.run)
-        ? e.run.join(' ')
-        : (e.run || e.command || ''),
+      command: Array.isArray(e.run) ? e.run.join(' ') : e.run || e.command || '',
     }))
   }
-  catch { return [] }
+  catch {
+    return []
+  }
 }
 
 async function loadConfigs() {
@@ -128,14 +140,21 @@ async function loadConfigs() {
         throw new Error(`[${index}]: expected an object`)
       if (typeof entry.path !== 'string' || !entry.path.trim())
         throw new Error(`[${index}].path: expected a non-empty string`)
-      if ('tools' in entry && (!Array.isArray(entry.tools) || entry.tools.some(tool => typeof tool !== 'string')))
+      if (
+        'tools' in entry
+        && (!Array.isArray(entry.tools) || entry.tools.some(tool => typeof tool !== 'string'))
+      ) {
         throw new Error(`[${index}].tools: expected a string array`)
+      }
       return { path: resolve(entry.path), tools: entry.tools ?? [] }
     })
   }
   catch (error) {
     const stderr = error.stderr?.toString().trim()
-    throw new Error(`mise config ls --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`, { cause: error })
+    throw new Error(
+      `mise config ls --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`,
+      { cause: error },
+    )
   }
 }
 
@@ -167,8 +186,9 @@ export function validateConfigTarget(path, allowCreate = false) {
 
 /** Pick mise's global write file, never the first discovered project config. */
 export function defaultConfigTarget(configs) {
-  const configDir = process.env.MISE_CONFIG_DIR
-    || resolve(process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config'), 'mise')
+  const configDir
+    = process.env.MISE_CONFIG_DIR
+      || resolve(process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config'), 'mise')
   const path = resolve(process.env.MISE_GLOBAL_CONFIG_FILE || resolve(configDir, 'config.toml'))
   let target
   try {
@@ -180,7 +200,9 @@ export function defaultConfigTarget(configs) {
     throw error
   }
   const canonicalPath = realpathSync(path)
-  return configs.some(config => config.path === path || config.path === canonicalPath) ? target : null
+  return configs.some(config => config.path === path || config.path === canonicalPath)
+    ? target
+    : null
 }
 
 /** Fetch mise registry (all known tools with backends). */
@@ -197,7 +219,10 @@ export async function registry() {
   }
   catch (error) {
     const stderr = error.stderr?.toString().trim()
-    throw new Error(`mise registry --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`, { cause: error })
+    throw new Error(
+      `mise registry --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`,
+      { cause: error },
+    )
   }
 }
 
@@ -216,7 +241,10 @@ export async function remoteVersions(tool) {
   }
   catch (error) {
     const stderr = error.stderr?.toString().trim()
-    throw new Error(`mise ls-remote ${tool} --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`, { cause: error })
+    throw new Error(
+      `mise ls-remote ${tool} --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`,
+      { cause: error },
+    )
   }
 }
 
@@ -246,7 +274,9 @@ export async function commandCatalog() {
     const help = await miseText(['-h'])
     return parseCommandCatalog(help)
   }
-  catch { return [] }
+  catch {
+    return []
+  }
 }
 
 function parseCommandCatalog(help) {
@@ -269,7 +299,10 @@ export async function commandHelp(command) {
   }
   catch (error) {
     const stderr = error.stderr?.toString().trim()
-    throw new Error(`mise ${command} -h: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`, { cause: error })
+    throw new Error(
+      `mise ${command} -h: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`,
+      { cause: error },
+    )
   }
 }
 
