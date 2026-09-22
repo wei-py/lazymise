@@ -1,3 +1,6 @@
+import { lstatSync, realpathSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { basename, dirname, extname, resolve } from 'node:path'
 import { $ } from 'bun'
 
 async function miseJson(args) {
@@ -41,19 +44,48 @@ export async function loadSnapshot() {
 
 async function loadTools() {
   try {
-    const entries = await miseJson(['ls', '--json'])
-    if (!Array.isArray(entries))
-      return []
-    return entries.map(e => ({
-      name: e.name || e.tool || '',
-      version: e.version || '',
-      requested: e.requested_version || '',
-      source: e.source?.path || null,
-      installed: e.installed === true,
-      active: e.active === true,
-    }))
+    const entries = JSON.parse(await miseText(['ls', '--json']))
+    const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+    if (!isObject(entries))
+      throw new Error('expected an object of tool version arrays')
+    const tools = []
+    for (const [name, versions] of Object.entries(entries)) {
+      if (!Array.isArray(versions))
+        throw new Error(`${name}: expected a version array`)
+      for (const [index, record] of versions.entries()) {
+        const fieldError = field => new Error(`${name}[${index}]: invalid ${field}`)
+        if (!isObject(record))
+          throw fieldError('version record')
+        if (typeof record.version !== 'string')
+          throw fieldError('version (expected string)')
+        if ('requested_version' in record && typeof record.requested_version !== 'string')
+          throw fieldError('requested_version (expected string)')
+        for (const field of ['installed', 'active']) {
+          if (field in record && typeof record[field] !== 'boolean')
+            throw fieldError(`${field} (expected boolean)`)
+        }
+        if (record.source != null) {
+          if (!isObject(record.source))
+            throw fieldError('source (expected object or null)')
+          if (record.source.path != null && typeof record.source.path !== 'string')
+            throw fieldError('source.path (expected string or null)')
+        }
+        tools.push({
+          name,
+          version: record.version,
+          requested: record.requested_version || record.version,
+          source: record.source?.path ?? null,
+          installed: record.installed ?? false,
+          active: record.active ?? false,
+        })
+      }
+    }
+    return tools.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : Number(b.active) - Number(a.active))
   }
-  catch { return [] }
+  catch (error) {
+    const stderr = error.stderr?.toString().trim()
+    throw new Error(`mise ls --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`, { cause: error })
+  }
 }
 
 async function loadUpdates() {
@@ -88,15 +120,67 @@ async function loadTasks() {
 
 async function loadConfigs() {
   try {
-    const entries = await miseJson(['config', 'ls', '--json'])
+    const entries = JSON.parse(await miseText(['config', 'ls', '--json']))
     if (!Array.isArray(entries))
-      return []
-    return entries.map(e => ({
-      path: e.path || '',
-      tools: e.tools || [],
-    }))
+      throw new Error('$: expected an array')
+    return entries.map((entry, index) => {
+      if (entry === null || typeof entry !== 'object' || Array.isArray(entry))
+        throw new Error(`[${index}]: expected an object`)
+      if (typeof entry.path !== 'string' || !entry.path.trim())
+        throw new Error(`[${index}].path: expected a non-empty string`)
+      if ('tools' in entry && (!Array.isArray(entry.tools) || entry.tools.some(tool => typeof tool !== 'string')))
+        throw new Error(`[${index}].tools: expected a string array`)
+      return { path: resolve(entry.path), tools: entry.tools ?? [] }
+    })
   }
-  catch { return [] }
+  catch (error) {
+    const stderr = error.stderr?.toString().trim()
+    throw new Error(`mise config ls --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`, { cause: error })
+  }
+}
+
+/** Validate an explicit write target without creating files or promising permissions. */
+export function validateConfigTarget(path, allowCreate = false) {
+  if (typeof path !== 'string' || !path.trim())
+    throw new Error('Configuration path must be a non-empty string')
+  const absolutePath = resolve(path)
+  if (extname(absolutePath) !== '.toml' || basename(absolutePath) === 'rust-toolchain.toml')
+    throw new Error(`Unsupported configuration format: ${absolutePath}`)
+  let entry
+  try {
+    entry = lstatSync(absolutePath)
+  }
+  catch (error) {
+    if (error.code !== 'ENOENT' || !allowCreate)
+      throw error
+    if (!statSync(dirname(absolutePath)).isDirectory())
+      throw new Error(`Configuration parent is not a directory: ${dirname(absolutePath)}`)
+    return { path: absolutePath, create: true }
+  }
+  // Follow a symlink only after lstat has proved the selected path exists.
+  // A dangling link is never treated as authorization to create a new file.
+  const target = entry.isSymbolicLink() ? statSync(absolutePath) : entry
+  if (!target.isFile())
+    throw new Error(`Configuration target is not a regular file: ${absolutePath}`)
+  return { path: absolutePath, create: false }
+}
+
+/** Pick mise's global write file, never the first discovered project config. */
+export function defaultConfigTarget(configs) {
+  const configDir = process.env.MISE_CONFIG_DIR
+    || resolve(process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config'), 'mise')
+  const path = resolve(process.env.MISE_GLOBAL_CONFIG_FILE || resolve(configDir, 'config.toml'))
+  let target
+  try {
+    target = validateConfigTarget(path)
+  }
+  catch (error) {
+    if (error.code === 'ENOENT')
+      return null
+    throw error
+  }
+  const canonicalPath = realpathSync(path)
+  return configs.some(config => config.path === path || config.path === canonicalPath) ? target : null
 }
 
 /** Fetch mise registry (all known tools with backends). */
@@ -111,7 +195,10 @@ export async function registry() {
       backends: e.backends || [],
     }))
   }
-  catch { return [] }
+  catch (error) {
+    const stderr = error.stderr?.toString().trim()
+    throw new Error(`mise registry --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`, { cause: error })
+  }
 }
 
 /** Fetch remote versions for a tool (full backend identifier like npm:package). */
@@ -127,7 +214,10 @@ export async function remoteVersions(tool) {
       }))
       .sort((a, b) => b.version.localeCompare(a.version, void 0, { numeric: true }))
   }
-  catch { return [] }
+  catch (error) {
+    const stderr = error.stderr?.toString().trim()
+    throw new Error(`mise ls-remote ${tool} --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`, { cause: error })
+  }
 }
 
 /** Execute arbitrary mise subcommand; returns output struct. */
@@ -177,8 +267,9 @@ export async function commandHelp(command) {
   try {
     return await miseText([command, '-h'])
   }
-  catch (err) {
-    return `No help available: ${err.message || err}`
+  catch (error) {
+    const stderr = error.stderr?.toString().trim()
+    throw new Error(`mise ${command} -h: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`, { cause: error })
   }
 }
 
@@ -273,6 +364,7 @@ const CONFIRM_COMMANDS = new Set([
   'self-update',
   'sync',
   'uninstall',
+  'upgrade',
   'unset',
   'untrust',
   'unuse',

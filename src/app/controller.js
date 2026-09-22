@@ -1,51 +1,53 @@
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { t } from '../config/i18n.js'
+import { lstatSync, readFileSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { resolve } from 'node:path'
+import { LANGUAGES, t } from '../config/i18n.js'
 import { loadSettings, saveSettings } from '../config/settings.js'
 import {
   commandBelongsToPage,
   commandCatalog,
   commandHelp,
   DASHBOARD_COMMANDS,
+  defaultConfigTarget,
   execute,
   isInteractive,
   loadSnapshot,
   needsConfirmation,
   registry,
   remoteVersions,
+  validateConfigTarget,
 } from '../mise.js'
 import {
   containsCaseInsensitive,
+  deleteLastGrapheme,
+  filterCommands,
+  filterRegistryTools,
   FOCUS,
   focusSeq,
   moveIndex,
   PAGE,
   PAGE_ORDER,
-  SCOPE,
+  supportsConfigTarget,
   VERSION_INTENT,
 } from './state.js'
 
 export class Application {
   #render
   #exit
-  #dying
+  #dying = false
+  #projectConfigMissing = false
+  #detailMaxScroll = 0
 
   constructor(render, exit) {
     this.#render = render
     this.#exit = exit
-    this.#dying = false
     this.state = {
       page: PAGE.Dashboard,
       focus: FOCUS.Navigation,
-      scope: SCOPE.Project,
+      configTarget: null,
       language: 'en',
-      snapshot: {
-        mise_version: '—',
-        tools: [],
-        updates: [],
-        tasks: [],
-        configs: [],
-      },
+      snapshot: { mise_version: '—', tools: [], updates: [], tasks: [], configs: [] },
       selected: 0,
       detailScroll: 0,
       selectedUpdates: new Set(),
@@ -61,95 +63,105 @@ export class Application {
     }
   }
 
-  // ---- lifecycle ----
-
   update() {
-    this.#render(this.state, this)
+    const viewport = this.#render(this.state, this)
+    if (viewport) {
+      this.state.width = viewport.width
+      this.state.height = viewport.height
+      this.#detailMaxScroll = viewport.detailMaxScroll
+      this.state.detailScroll = Math.min(this.state.detailScroll, this.#detailMaxScroll)
+      if (this.state.overlay && viewport.overlayMaxScroll != null)
+        this.state.overlay.scroll = Math.min(this.state.overlay.scroll || 0, viewport.overlayMaxScroll)
+    }
   }
 
   async start() {
-    const settings = loadSettings()
-    this.state.language = settings.language
+    this.state.language = loadSettings().language
     this.update()
-    await this.refresh()
+    const refreshed = await this.refresh()
+    if (refreshed && !this.state.configTarget && !this.state.overlay) {
+      try {
+        this.state.configTarget = defaultConfigTarget(this.state.snapshot.configs)
+        this.update()
+      }
+      catch (error) {
+        this.state.status = t(this.state.language, 'config_target_invalid', { error: error.message || String(error) })
+      }
+    }
     try {
       this.state.commands = await commandCatalog()
     }
-    catch {
-      this.state.commands = []
+    catch (error) {
+      this.state.status = t(this.state.language, 'command_failed', { error: error.message || String(error) })
     }
     this.state.loading = false
+    this.clampSelection()
     this.update()
   }
 
   async refresh() {
     try {
-      this.state.snapshot = await loadSnapshot()
+      const snapshot = await loadSnapshot()
+      const selection = this.#captureSelection()
+      this.state.snapshot = snapshot
+      const names = new Set(snapshot.updates.map(item => item.name))
+      for (const name of this.state.selectedUpdates) {
+        if (!names.has(name))
+          this.state.selectedUpdates.delete(name)
+      }
+      this.#restoreSelection(selection)
       this.state.status = ''
+      this.update()
+      return true
     }
-    catch {
-      this.state.status = t(this.state.language, 'error_load_failed')
+    catch (error) {
+      this.state.status = t(this.state.language, 'snapshot_load_failed', { error: error.message || String(error) })
+      this.update()
+      return false
     }
-    this.clampSelection()
-    this.update()
   }
-
-  // ---- key dispatch ----
 
   handleKey(key) {
     if (this.#dying)
       return
-
-    // overlay active? delegate
     if (this.state.overlay) {
       this.handleOverlayKey(key)
       return
     }
-
-    const { name, ctrl, shift, text } = key
-
-    // Ctrl-c = quit
-    if (ctrl && name === 'c') { this.#quit(); return }
-
-    // basic keys
+    const { name, ctrl, meta, shift } = key
+    if (ctrl) {
+      if (name === 'c')
+        this.#quit()
+      else if (name === 'd')
+        this.moveVertical(5)
+      else if (name === 'u')
+        this.moveVertical(-5)
+      return
+    }
+    if (meta)
+      return
     switch (name) {
       case 'q': this.#quit(); return
       case '?': this.showHelp(); return
       case '/': this.toggleSearch(); return
       case 'r': void this.refresh(); return
-      case 'p': this.setScope(SCOPE.Project); return
-      case 'G': this.setScope(SCOPE.Global); return
+      case 'f2': this.openConfigTarget(); return
       case 'a': void this.openRegistry(); return
       case 'A': this.openCustomTool(); return
       case ':': this.openCommandPalette(); return
       case 'm': this.openContextCommands(); return
-    }
-
-    // page jump
-    switch (name) {
-      case '1':
-      case 'g': this.jumpToPage(PAGE.Dashboard); return
+      case '1': this.jumpToPage(PAGE.Dashboard); return
       case '2': this.jumpToPage(PAGE.Tools); return
-      case '3':
-      case 'u': this.jumpToPage(PAGE.Updates); return
-      case '4':
-      case 't': this.jumpToPage(PAGE.Tasks); return
-      case 'b': this.jumpToPage(PAGE.Console); return
-      case '5':
-      case 'E': this.jumpToPage(PAGE.Environment); return
-      case '6':
-      case 'c': this.jumpToPage(PAGE.Config); return
-      case '7':
-      case 's': this.jumpToPage(PAGE.System); return
-      case '8':
-      case 'o': this.jumpToPage(PAGE.Preferences); return
-      case 'x': this.jumpToPage(PAGE.Logs); return
+      case '3': this.jumpToPage(PAGE.Updates); return
+      case '4': this.jumpToPage(PAGE.Tasks); return
+      case '5': this.jumpToPage(PAGE.Environment); return
+      case '6': this.jumpToPage(PAGE.Config); return
+      case '7': this.jumpToPage(PAGE.System); return
+      case '8': this.jumpToPage(PAGE.Preferences); return
+      case '9': this.jumpToPage(PAGE.Console); return
+      case '0': this.jumpToPage(PAGE.Logs); return
       case '[': this.changePage(-1); return
       case ']': this.changePage(1); return
-    }
-
-    // navigation
-    switch (name) {
       case 'h':
       case 'left': this.moveFocus(-1); return
       case 'l':
@@ -158,84 +170,81 @@ export class Application {
       case 'down': this.moveVertical(1); return
       case 'k':
       case 'up': this.moveVertical(-1); return
-      case 'tab':
-        if (shift)
-          this.cycleFocus(-1)
-        else this.cycleFocus(1)
-        return
+      case 'tab': this.cycleFocus(shift ? -1 : 1); return
       case 'home': this.#goTop(); return
       case 'end': this.#goBottom(); return
+      case 'escape':
+        if (this.state.focus === FOCUS.Details)
+          this.state.focus = FOCUS.List
+        else if (this.state.focus === FOCUS.List)
+          this.state.focus = FOCUS.Navigation
+        this.update()
+        return
     }
-
-    // ctrl + d/u = page scroll
-    if (ctrl && name === 'd') { this.moveVertical(5); return }
-    if (ctrl && name === 'u') { this.moveVertical(-5); return }
-
-    // escape = back to nav
-    if (name === 'escape') {
-      this.state.focus = FOCUS.Navigation
+    if (name === 'enter' && this.state.focus === FOCUS.Navigation) {
+      this.state.focus = FOCUS.List
       this.update()
       return
     }
-
-    // page-specific
-    this.#handlePageKey(name, _ctrl, _shift)
-
-    // printable text in navigation/search context
-    if (text && text.length === 1 && !ctrl && !shift && name !== 'escape') {
-      // if any printable character is pressed, start search with that character
-      this.state.overlay = { type: 'Search', previousSearch: this.state.search }
-      this.state.search = text
-      this.state.selected = 0
-      this.clampSelection()
-      this.update()
-    }
+    if (this.state.focus === FOCUS.List)
+      this.#handlePageKey(name)
   }
 
-  #handlePageKey(name, _ctrl, _shift) {
-    const { page } = this.state
-    switch (page) {
+  #handlePageKey(name) {
+    switch (this.state.page) {
       case PAGE.Tools:
-        switch (name) {
-          case 'v': void this.useSelectedVersion(); return
-          case 'i': void this.installSelectedVersion(); return
-          case 'd': void this.deleteSelectedTool(); return
-          case 'enter': void this.runPageCommand()
-        }
+        if (name === 'enter' || name === 'v')
+          void this.useSelectedVersion()
+        else if (name === 'i')
+          void this.installSelectedVersion()
+        else if (name === 'd')
+          void this.deleteSelectedTool()
         break
       case PAGE.Updates:
-        switch (name) {
-          case 'space': this.toggleSelectedUpdate(); return
-          case 'U': void this.upgradeSelected()
-        }
+        if (name === 'space')
+          this.toggleSelectedUpdate()
+        else if (name === 'enter' || name === 'u')
+          void this.upgradeSelected()
+        else if (name === 'U')
+          void this.upgradeSelected(true)
         break
-      case PAGE.Tasks: {
-        const task = this.selectedTask()
-        if (name === 'enter' && task) { void this.runSelectedTask() }
+      case PAGE.Tasks:
+        if (name === 'enter')
+          void this.runSelectedTask()
         break
-      }
       case PAGE.Environment:
       case PAGE.System:
-        if (name === 'enter') { void this.runPageCommand() }
-        break
-      case PAGE.Console:
-        if (name === 'd') { this.#dismissConsoleTasks() }
+        if (name === 'enter')
+          void this.runPageCommand()
         break
       case PAGE.Config:
-        if (name === 'e') { void this.openConfig(); return }
-        if (name === 'y') { void this.#copySelectedConfig() }
+        if (name === 'enter')
+          this.selectConfigTarget()
+        else if (name === 'e')
+          void this.openConfig()
+        else if (name === 'y')
+          this.#copySelectedConfig()
         break
       case PAGE.Preferences:
-        if (name === 'enter') { void this.toggleLanguage() }
+        if (name === 'enter')
+          this.applySelectedLanguage()
         break
-      case PAGE.Logs: {
-        const log = this.selectedLog()
-        if (name === 'enter' && log) { void log }
+      case PAGE.Console:
+        if (name === 'd') {
+          this.#dismissConsoleTasks()
+        }
+        else if (name === 'enter' && this.visibleItems().length) {
+          this.state.focus = FOCUS.Details
+          this.update()
+        }
         break
-      }
-      case PAGE.Dashboard:
-        if (name === 'enter') { void this.runPageCommand() }
+      case PAGE.Logs:
+        if (name === 'enter' && this.selectedLog()) {
+          this.state.focus = FOCUS.Details
+          this.update()
+        }
         break
+      case PAGE.Dashboard: break
     }
   }
 
@@ -244,350 +253,530 @@ export class Application {
     this.#exit(0)
   }
 
-  // ---- overlay routing ----
-
   handleOverlayKey(key) {
     const ov = this.state.overlay
     if (!ov)
       return
+    if (key.ctrl && key.name === 'c') {
+      this.#cancelOverlayFlow()
+      return
+    }
+    if (!key.ctrl && !key.meta && (key.name === 'pageup' || key.name === 'pagedown')
+      && ['ConfigTarget', 'CustomTool', 'Picker'].includes(ov.type)) {
+      this.#scrollOverlay(ov, key.name)
+      return
+    }
+    if (!key.ctrl && !key.meta && key.name === 'f2'
+      && (ov.type === 'CustomTool' || (ov.type === 'Picker' && ov.intent !== VERSION_INTENT.Install))) {
+      if (ov.loading) {
+        ov.error = t(this.state.language, 'config_target_wait')
+        ov.scroll = 0
+        this.update()
+      }
+      else {
+        this.openConfigTarget(ov)
+      }
+      return
+    }
     switch (ov.type) {
-      case 'Search': this.handleSearchKey(key); return
-      case 'Help': this.#handleHelpKey(_key); return
-      case 'Picker': this.handlePickerKey(key); return
-      case 'CommandPalette': this.handleCommandPaletteKey(key); return
-      case 'CommandBuilder': this.handleCommandBuilderKey(key); return
-      case 'CustomTool': this.handleCustomToolKey(key); return
+      case 'Search': this.handleSearchKey(key); break
+      case 'Help': this.#handleHelpKey(key); break
+      case 'ConfigTarget': this.handleConfigTargetKey(key); break
+      case 'Picker': this.handlePickerKey(key); break
+      case 'CommandPalette': this.handleCommandPaletteKey(key); break
+      case 'CommandBuilder': this.handleCommandBuilderKey(key); break
+      case 'CustomTool': this.handleCustomToolKey(key); break
       case 'ConfirmDelete':
-      case 'ConfirmCommand': this.handleConfirmKey(key)
+      case 'ConfirmCommand': this.handleConfirmKey(key); break
     }
   }
 
-  // ---- search ----
-
   toggleSearch() {
-    this.state.overlay = { type: 'Search', previousSearch: this.state.search }
+    this.state.overlay = {
+      type: 'Search',
+      parent: null,
+      previousSearch: this.state.search,
+      previousSelected: this.state.selected,
+    }
     this.update()
   }
 
   handleSearchKey(key) {
-    const { name, ctrl, shift, text } = key
-    if (ctrl && name === 'c') { this.#closeOverlay(); return }
-
-    switch (name) {
-      case 'enter':
-        // apply search — stay on current search text, close overlay
-        this.#closeOverlay()
-        this.clampSelection()
-        this.update()
-        return
-      case 'escape':
+    const ov = this.state.overlay
+    const { name, ctrl, meta, text } = key
+    if (ctrl || meta) {
+      if (ctrl && !meta && name === 'u')
         this.state.search = ''
-        this.state.selected = 0
-        this.#closeOverlay()
-        this.update()
-        return
-      case 'backspace':
-        this.state.search = this.state.search.slice(0, -1)
-        this.state.selected = 0
-        this.clampSelection()
-        this.update()
-        return
+      else return
     }
-
-    // printable
-    if (text && text.length === 1 && !ctrl && !shift) {
-      this.state.search += text
-      this.state.selected = 0
+    else if (name === 'enter') {
+      this.#closeOverlay()
+      return
+    }
+    else if (name === 'escape') {
+      this.state.search = ov.previousSearch
+      this.state.selected = ov.previousSelected
+      this.state.detailScroll = 0
       this.clampSelection()
+      this.#closeOverlay()
+      return
+    }
+    else if (name === 'backspace') {
+      this.state.search = deleteLastGrapheme(this.state.search)
+    }
+    else if (text) {
+      this.state.search += text
+    }
+    else {
+      return
+    }
+    this.state.selected = 0
+    this.state.detailScroll = 0
+    this.clampSelection()
+    this.update()
+  }
+
+  #beginSearch(ov) {
+    ov.previousSearch = { search: ov.search, selected: ov.selected }
+    ov.searching = true
+    this.update()
+  }
+
+  #editSearch(ov, key, items) {
+    const { name, ctrl, meta, text } = key
+    if (ctrl || meta) {
+      if (ctrl && !meta && name === 'u')
+        ov.search = ''
+      else return
+    }
+    else if (name === 'enter') {
+      ov.searching = false
+      this.update()
+      return
+    }
+    else if (name === 'escape') {
+      Object.assign(ov, ov.previousSearch)
+      ov.searching = false
+      this.update()
+      return
+    }
+    else if (name === 'backspace') {
+      ov.search = deleteLastGrapheme(ov.search)
+    }
+    else if (text) {
+      ov.search += text
+    }
+    else {
+      return
+    }
+    ov.selected = 0
+    ov.selected = Math.max(0, Math.min(ov.selected, items().length - 1))
+    this.update()
+  }
+
+  #handleHelpKey(key) {
+    if (key.ctrl || key.meta)
+      return
+    if (key.name === 'escape' || key.name === 'q')
+      this.#closeOverlay()
+    else this.#scrollOverlay(this.state.overlay, key.name)
+  }
+
+  #scrollOverlay(ov, name) {
+    switch (name) {
+      case 'j':
+      case 'down': ov.scroll = Math.min(Number.MAX_SAFE_INTEGER, (ov.scroll || 0) + 1); break
+      case 'k':
+      case 'up': ov.scroll = Math.max(0, (ov.scroll || 0) - 1); break
+      case 'pageup': ov.scroll = Math.max(0, (ov.scroll || 0) - 10); break
+      case 'pagedown': ov.scroll = Math.min(Number.MAX_SAFE_INTEGER, (ov.scroll || 0) + 10); break
+      case 'home': ov.scroll = 0; break
+      case 'end': ov.scroll = Number.MAX_SAFE_INTEGER; break
+      default: return
+    }
+    this.update()
+  }
+
+  // Configuration discovery is read at action boundaries, never during rendering.
+  #checkProjectCandidate() {
+    this.#projectConfigMissing = false
+    try {
+      lstatSync(resolve('mise.toml'))
+    }
+    catch (error) {
+      this.#projectConfigMissing = error.code === 'ENOENT'
+    }
+  }
+
+  configTargetItems(ov = this.state.overlay) {
+    const seen = new Set()
+    const items = []
+    for (const config of this.state.snapshot.configs) {
+      const path = resolve(config.path)
+      if (seen.has(path))
+        continue
+      seen.add(path)
+      if (containsCaseInsensitive(path, ov?.search || ''))
+        items.push({ kind: 'file', path, supported: supportsConfigTarget(path) })
+    }
+    if (this.#projectConfigMissing)
+      items.push({ kind: 'project', path: resolve('mise.toml'), supported: true })
+    items.push({ kind: 'path' })
+    return items
+  }
+
+  openConfigTarget(parent = null, resume = null) {
+    this.#checkProjectCandidate()
+    const ov = {
+      type: 'ConfigTarget',
+      parent,
+      resume,
+      mode: 'list',
+      search: '',
+      searching: false,
+      selected: 0,
+      input: '',
+      error: '',
+    }
+    const current = this.state.configTarget
+      ? this.configTargetItems(ov).findIndex(item => item.path === this.state.configTarget.path)
+      : -1
+    ov.selected = Math.max(0, current)
+    this.state.overlay = ov
+    this.update()
+  }
+
+  selectConfigTarget(path = this.selectedConfig()?.path) {
+    if (!path)
+      return false
+    try {
+      this.state.configTarget = validateConfigTarget(path)
+      this.state.status = t(this.state.language, 'config_target_selected', { path: this.state.configTarget.path })
+      this.update()
+      return true
+    }
+    catch (error) {
+      this.state.status = t(this.state.language, 'config_target_invalid', { error: error.message || String(error) })
+      this.update()
+      return false
+    }
+  }
+
+  #acceptConfigTarget(ov, target) {
+    this.state.configTarget = target
+    this.state.status = t(this.state.language, 'config_target_selected', { path: target.path })
+    this.state.overlay = ov.parent
+    if (ov.parent && !ov.parent.loadError)
+      ov.parent.error = ''
+    const resume = ov.resume
+    if (resume?.kind === 'add')
+      void this.openRegistry()
+    else if (resume?.kind === 'custom')
+      this.openCustomTool()
+    else if (resume?.kind === 'use')
+      void this.openVersionsForAction(VERSION_INTENT.Use, resume.tool)
+    else this.update()
+  }
+
+  #chooseConfigTarget(ov, path, allowCreate) {
+    try {
+      const target = validateConfigTarget(path, allowCreate)
+      if (!target.create) {
+        this.#acceptConfigTarget(ov, target)
+        return
+      }
+      this.state.overlay = {
+        type: 'ConfirmCommand',
+        parent: ov,
+        scroll: 0,
+        message: t(this.state.language, 'config_target_create', { path: target.path }),
+        onConfirm: () => {
+          try {
+            this.#acceptConfigTarget(ov, validateConfigTarget(target.path, true))
+          }
+          catch (error) {
+            this.state.overlay = ov
+            ov.error = t(this.state.language, 'config_target_invalid', { error: error.message || String(error) })
+            ov.scroll = 0
+            this.update()
+          }
+        },
+      }
+      this.update()
+    }
+    catch (error) {
+      ov.error = t(this.state.language, 'config_target_invalid', { error: error.message || String(error) })
+      ov.scroll = 0
       this.update()
     }
   }
 
-  #handleHelpKey(_key) {
-    // any key closes help
-    this.#closeOverlay()
-    this.update()
+  handleConfigTargetKey(key) {
+    const ov = this.state.overlay
+    const { name, ctrl, meta, text } = key
+    if (ov.mode === 'path') {
+      if (ctrl || meta) {
+        if (ctrl && !meta && name === 'u')
+          ov.input = ''
+        else return
+      }
+      else if (name === 'escape') {
+        ov.mode = 'list'
+        ov.error = ''
+      }
+      else if (name === 'enter') {
+        if (!ov.input.trim())
+          return
+        const input = ov.input.trim()
+        const path = input.startsWith('~/') ? resolve(homedir(), input.slice(2)) : resolve(input)
+        this.#chooseConfigTarget(ov, path, true)
+        return
+      }
+      else if (name === 'backspace') {
+        ov.input = deleteLastGrapheme(ov.input)
+      }
+      else if (text) {
+        ov.input += text
+      }
+      else {
+        return
+      }
+      this.update()
+      return
+    }
+    if (ov.searching) {
+      this.#editSearch(ov, key, () => this.configTargetItems(ov))
+      return
+    }
+    if (ctrl || meta)
+      return
+    if (name === 'escape' || name === 'q') { this.#closeOverlay(); return }
+    if (name === '/') { this.#beginSearch(ov); return }
+    if (name === 'r') {
+      void (async () => {
+        const success = await this.refresh()
+        if (this.state.overlay !== ov)
+          return
+        this.#checkProjectCandidate()
+        ov.error = success ? '' : this.state.status
+        ov.scroll = 0
+        ov.selected = Math.max(0, Math.min(ov.selected, this.configTargetItems(ov).length - 1))
+        this.update()
+      })()
+      return
+    }
+    const items = this.configTargetItems(ov)
+    if (name === 'enter') {
+      const item = items[ov.selected]
+      if (!item)
+        return
+      ov.error = ''
+      if (item.kind === 'path') {
+        ov.mode = 'path'
+        this.update()
+      }
+      else {
+        this.#chooseConfigTarget(ov, item.path, item.kind === 'project')
+      }
+      return
+    }
+    this.#moveOverlaySelection(ov, name, items.length)
   }
-
-  // ---- picker (registry → backend → version) ----
 
   async openRegistry() {
-    this.state.status = t(this.state.language, 'loading_registry')
+    if (!this.state.configTarget) {
+      this.openConfigTarget(null, { kind: 'add' })
+      return
+    }
+    const ov = {
+      type: 'Picker',
+      parent: null,
+      level: 'registry',
+      tools: [],
+      backends: ['All'],
+      filterIdx: 0,
+      selected: 0,
+      search: '',
+      searching: false,
+      intent: VERSION_INTENT.Use,
+      loading: true,
+      error: '',
+    }
+    this.state.overlay = ov
+    await this.#loadPicker(ov)
+  }
+
+  async #loadPicker(ov) {
+    ov.loading = true
+    ov.error = ''
+    ov.scroll = 0
+    ov.loadError = false
     this.update()
     try {
-      const tools = await registry()
-      // collect unique backends
-      const backendSet = new Set()
-      for (const t of tools) {
-        for (const b of t.backends) backendSet.add(b)
+      const result = ov.level === 'registry' ? await registry() : await remoteVersions(ov.toolSpecName)
+      if (this.state.overlay !== ov)
+        return
+      if (ov.level === 'registry') {
+        ov.tools = result
+        const backends = new Set()
+        for (const tool of result) {
+          for (const backend of tool.backends) backends.add(backend)
+        }
+        ov.backends = ['All', ...Array.from(backends).sort()]
+        ov.filterIdx = Math.min(ov.filterIdx, ov.backends.length - 1)
+        ov.selected = Math.max(0, Math.min(ov.selected, filterRegistryTools(ov).length - 1))
       }
-      const backends = ['All', ...Array.from(backendSet).sort()]
+      else {
+        ov.versions = result
+        ov.selected = Math.max(0, Math.min(ov.selected, result.length - 1))
+      }
+      ov.loading = false
+      ov.error = ''
+    }
+    catch (error) {
+      if (this.state.overlay !== ov)
+        return
+      ov.loading = false
+      ov.loadError = true
+      ov.error = error.message || String(error)
+    }
+    this.update()
+  }
+
+  async #openBackends(tool, parent) {
+    if (!tool.backends?.length) {
+      await this.#openVersions(tool.name, parent)
+    }
+    else if (tool.backends.length === 1) {
+      await this.#openVersions(`${tool.backends[0]}:${tool.name}`, parent)
+    }
+    else {
       this.state.overlay = {
         type: 'Picker',
-        level: 'registry',
-        tools,
-        backends,
-        filterIdx: 0,
+        parent,
+        level: 'backends',
+        tool,
+        backendList: tool.backends,
         selected: 0,
-        search: '',
         intent: VERSION_INTENT.Use,
+        error: '',
       }
-      this.state.status = ''
+      this.update()
     }
-    catch {
-      this.state.status = t(this.state.language, 'error_load_failed')
-    }
-    this.update()
   }
 
-  async #openBackends() {
-    const ov = this.state.overlay
-    const tool = ov.tools[ov.selected]
-    if (!tool)
-      return
-    if (!tool.backends || tool.backends.length === 0) {
-      // no backends — go straight to versions
-      await this.#openVersions(tool.name)
-      return
+  async #openVersions(toolSpecName, parent, intent = VERSION_INTENT.Use) {
+    const ov = {
+      type: 'Picker',
+      parent,
+      level: 'versions',
+      toolSpecName,
+      versions: [],
+      selected: 0,
+      intent,
+      loading: true,
+      error: '',
     }
-    if (tool.backends.length === 1) {
-      // single backend — use it and go to versions
-      const fullName = `${tool.backends[0]}:${tool.name}`
-      await this.#openVersions(fullName)
-      return
-    }
-    // multiple backends — show backend picker
-    ov.level = 'backends'
-    ov.selectedTool = tool
-    ov.backendList = tool.backends
-    ov.backendSelected = 0
-    this.update()
-  }
-
-  async #openVersions(toolName) {
-    const ov = this.state.overlay
-    ov.level = 'versions'
-    ov.selected = 0
-    ov.statusText = t(this.state.language, 'loading_versions')
-    ov.versions = []
-    this.update()
-    try {
-      ov.versions = await remoteVersions(toolName)
-      ov.statusText = ''
-    }
-    catch {
-      ov.statusText = t(this.state.language, 'error_load_failed')
-      ov.versions = []
-    }
-    this.update()
+    this.state.overlay = ov
+    await this.#loadPicker(ov)
   }
 
   handlePickerKey(key) {
     const ov = this.state.overlay
-    const { name, ctrl, shift, text } = key
-
-    if (ctrl && name === 'c') { this.#closeOverlay(); return }
-
+    const { name, ctrl, meta, shift } = key
+    if (ov.level === 'registry' && ov.searching) {
+      this.#editSearch(ov, key, () => filterRegistryTools(ov))
+      return
+    }
+    if (ctrl || meta)
+      return
+    if (name === 'escape' || name === 'q') { this.#closeOverlay(); return }
+    if (ov.loading)
+      return
+    if (name === 'r' && ov.level !== 'backends') { void this.#loadPicker(ov); return }
     if (ov.level === 'registry') {
-      switch (name) {
-        case 'tab': {
-          const len = ov.backends.length
-          const delta = shift ? -1 : 1
-          ov.filterIdx = ((ov.filterIdx + delta) % len + len) % len
-          ov.selected = 0
-          this.update()
-          return
-        }
-        case '/':
-          // toggle search mode inside picker
-          ov.searching = !ov.searching
-          if (!ov.searching)
-            ov.search = ''
-          this.update()
-          return
-        case 'escape':
-          this.#closeOverlay()
-          this.update()
-          return
-        case 'enter': {
-          const filtered = this.#pickerFiltered(ov)
-          if (filtered.length === 0)
-            return
-          ov.selectedTool = filtered[ov.selected]
-          void this.#openBackends()
-          return
-        }
-        case 'j':
-        case 'down': {
-          const items = this.#pickerFiltered(ov)
-          ov.selected = moveIndex(ov.selected, 1, items.length || 1)
-          this.update()
-          return
-        }
-        case 'k':
-        case 'up': {
-          const items = this.#pickerFiltered(ov)
-          ov.selected = moveIndex(ov.selected, -1, items.length || 1)
-          this.update()
-          return
-        }
-        case 'backspace':
-          if (ov.searching && ov.search.length > 0) {
-            ov.search = ov.search.slice(0, -1)
-            ov.selected = 0
-            this.update()
-          }
-          return
-      }
-      if (ov.searching && text && text.length === 1 && !ctrl && !shift) {
-        ov.search += text
+      if (name === '/') { this.#beginSearch(ov); return }
+      if (name === 'tab') {
+        ov.filterIdx = moveIndex(ov.filterIdx, shift ? -1 : 1, ov.backends.length)
         ov.selected = 0
         this.update()
+        return
       }
-      return
-    }
-
-    if (ov.level === 'backends') {
-      const list = ov.backendList || []
-      switch (name) {
-        case 'escape':
-          ov.level = 'registry'
-          ov.selected = ov.tools.indexOf(ov.selectedTool)
-          if (ov.selected < 0)
-            ov.selected = 0
-          this.update()
-          return
-        case 'enter': {
-          const backend = list[ov.backendSelected]
-          if (!backend)
-            return
-          const fullName = `${backend}:${ov.selectedTool.name}`
-          void this.#openVersions(fullName)
-          return
-        }
-        case 'j':
-        case 'down':
-          ov.backendSelected = moveIndex(ov.backendSelected, 1, list.length || 1)
-          this.update()
-          return
-        case 'k':
-        case 'up':
-          ov.backendSelected = moveIndex(ov.backendSelected, -1, list.length || 1)
-          this.update()
-          return
+      const items = filterRegistryTools(ov)
+      if (name === 'enter') {
+        if (!ov.loadError && items[ov.selected])
+          void this.#openBackends(items[ov.selected], ov)
       }
-      return
+      else {
+        this.#moveOverlaySelection(ov, name, items.length)
+      }
     }
-
-    if (ov.level === 'versions') {
-      const versions = ov.versions || []
-      switch (name) {
-        case 'escape':
-          // go back to previous level
-          if (ov.selectedTool) {
-            // was at backends or registry — go back
-            if (ov.backendList && ov.backendList.length > 1) {
-              ov.level = 'backends'
-              this.update()
-            }
-            else {
-              ov.level = 'registry'
-              ov.selected = ov.tools.indexOf(ov.selectedTool)
-              if (ov.selected < 0)
-                ov.selected = 0
-              this.update()
-            }
-          }
-          else {
-            ov.level = 'registry'
-            this.update()
-          }
+    else if (ov.level === 'backends') {
+      if (name === 'enter') {
+        const backend = ov.backendList[ov.selected]
+        if (backend)
+          void this.#openVersions(`${backend}:${ov.tool.name}`, ov)
+      }
+      else {
+        this.#moveOverlaySelection(ov, name, ov.backendList.length)
+      }
+    }
+    else if (ov.level === 'versions') {
+      if (name === 'enter') {
+        const version = ov.versions[ov.selected]
+        if (!version || ov.loadError)
           return
-        case 'enter': {
-          const version = versions[ov.selected]
-          if (!version)
-            return
-          const intent = ov.intent || VERSION_INTENT.Use
-          // build tool@version spec
-          let toolSpec = version.version
-          // resolve the full tool name
-          if (ov.selectedTool) {
-            const st = ov.selectedTool
-            if (st.backends && st.backends.length === 1) {
-              toolSpec = `${st.backends[0]}:${st.name}@${version.version}`
-            }
-            else if (st.backends && st.backends.length > 1 && ov.backendList) {
-              const backend = ov.backendList[ov.backendSelected] || st.backends[0]
-              toolSpec = `${backend}:${st.name}@${version.version}`
-            }
-            else {
-              toolSpec = `${st.name}@${version.version}`
-            }
-          }
-          this.#closeOverlay()
-          if (intent === VERSION_INTENT.Use) {
-            const scopeFlag = this.state.scope === SCOPE.Global ? ['--global'] : []
-            this.executeBackground(['use', '--yes', ...scopeFlag, toolSpec], `use ${toolSpec}`)
-          }
-          else {
-            this.executeBackground(['install', '--yes', toolSpec], `install ${toolSpec}`)
-          }
-          return
+        const spec = `${ov.toolSpecName}@${version.version}`
+        if (ov.intent === VERSION_INTENT.Install) {
+          this.#cancelOverlayFlow()
+          this.executeBackground(['install', '--yes', spec], `install ${spec}`)
         }
-        case 'j':
-        case 'down':
-          ov.selected = moveIndex(ov.selected, 1, versions.length || 1)
-          this.update()
-          return
-        case 'k':
-        case 'up':
-          ov.selected = moveIndex(ov.selected, -1, versions.length || 1)
-          this.update()
+        else if (this.useTool(spec)) {
+          this.#cancelOverlayFlow()
+        }
+      }
+      else {
+        this.#moveOverlaySelection(ov, name, ov.versions.length)
       }
     }
   }
 
-  #pickerFiltered(ov) {
-    if (!ov.tools)
-      return []
-    let filtered = ov.tools
-    // filter by search
-    if (ov.search) {
-      const q = ov.search.toLowerCase()
-      filtered = filtered.filter(t =>
-        t.name.toLowerCase().includes(q)
-        || (t.description && t.description.toLowerCase().includes(q)),
-      )
+  #moveOverlaySelection(ov, name, length) {
+    switch (name) {
+      case 'j':
+      case 'down': ov.selected = moveIndex(ov.selected, 1, length); break
+      case 'k':
+      case 'up': ov.selected = moveIndex(ov.selected, -1, length); break
+      case 'home': ov.selected = 0; break
+      case 'end': ov.selected = Math.max(0, length - 1); break
+      default: return
     }
-    // filter by backend
-    if (ov.filterIdx > 0 && ov.backends) {
-      const backend = ov.backends[ov.filterIdx]
-      filtered = filtered.filter(t => t.backends && t.backends.includes(backend))
-    }
-    return filtered
+    if (ov.type === 'ConfigTarget')
+      ov.scroll = 0
+    this.update()
   }
-
-  // ---- command palette ----
 
   openCommandPalette() {
     this.state.overlay = {
       type: 'CommandPalette',
+      parent: null,
       commands: this.state.commands,
       selected: 0,
       search: '',
       searching: false,
+      context: false,
     }
     this.update()
   }
 
   openContextCommands() {
-    const page = this.state.page
-    const filtered = this.state.commands.filter(c =>
-      commandBelongsToPage(page, c.name) || DASHBOARD_COMMANDS.includes(c.name),
-    )
+    const { page, commands } = this.state
     this.state.overlay = {
       type: 'CommandPalette',
-      commands: filtered,
+      parent: null,
+      commands: commands.filter(command => page === PAGE.Dashboard
+        ? DASHBOARD_COMMANDS.includes(command.name)
+        : commandBelongsToPage(page, command.name)),
       selected: 0,
       search: '',
       searching: false,
@@ -598,249 +787,191 @@ export class Application {
 
   handleCommandPaletteKey(key) {
     const ov = this.state.overlay
-    const { name, ctrl, shift, text } = key
-
-    if (ctrl && name === 'c') { this.#closeOverlay(); return }
-
     if (ov.searching) {
-      switch (name) {
-        case 'enter':
-          ov.searching = false
-          ov.selected = 0
-          this.update()
-          return
-        case 'escape':
-          ov.search = ''
-          ov.searching = false
-          ov.selected = 0
-          this.update()
-          return
-        case 'backspace':
-          ov.search = ov.search.slice(0, -1)
-          ov.selected = 0
-          this.update()
-          return
-      }
-      if (text && text.length === 1 && !ctrl && !shift) {
-        ov.search += text
-        ov.selected = 0
-        this.update()
-      }
+      this.#editSearch(ov, key, () => filterCommands(ov.commands, ov.search))
       return
     }
-
-    // not searching
-    const filtered = this.#commandFiltered(ov)
-    switch (name) {
-      case 'escape':
-      case 'q':
-        this.#closeOverlay()
-        this.update()
-        return
-      case '/':
-        ov.searching = true
-        this.update()
-        return
-      case 'enter': {
-        const cmd = filtered[ov.selected]
-        if (!cmd)
-          return
-        this.#openCommandBuilder(cmd)
-        return
-      }
-      case 'j':
-      case 'down':
-        ov.selected = moveIndex(ov.selected, 1, filtered.length || 1)
-        this.update()
-        return
-      case 'k':
-      case 'up':
-        ov.selected = moveIndex(ov.selected, -1, filtered.length || 1)
-        this.update()
+    if (key.ctrl || key.meta)
+      return
+    const { name } = key
+    if (name === 'escape' || name === 'q') { this.#closeOverlay(); return }
+    if (name === '/') { this.#beginSearch(ov); return }
+    const items = filterCommands(ov.commands, ov.search)
+    if (name === 'enter') {
+      if (items[ov.selected])
+        void this.#openCommandBuilder(items[ov.selected], ov)
+    }
+    else {
+      this.#moveOverlaySelection(ov, name, items.length)
     }
   }
 
-  #commandFiltered(ov) {
-    if (!ov.commands)
-      return []
-    if (!ov.search)
-      return ov.commands
-    const q = ov.search.toLowerCase()
-    return ov.commands.filter(c =>
-      c.name.toLowerCase().includes(q)
-      || (c.description && c.description.toLowerCase().includes(q)),
-    )
-  }
-
-  async #openCommandBuilder(cmd) {
-    const help = await commandHelp(cmd.name)
-    this.state.overlay = {
+  async #openCommandBuilder(command, parent = null) {
+    const ov = {
       type: 'CommandBuilder',
-      command: cmd,
-      help,
+      parent,
+      command,
+      help: '',
       args: '',
       mode: 'input',
       scroll: 0,
+      loading: true,
+      error: '',
+    }
+    this.state.overlay = ov
+    await this.#loadCommandHelp(ov)
+  }
+
+  async #loadCommandHelp(ov) {
+    ov.loading = true
+    ov.error = ''
+    ov.scroll = 0
+    this.update()
+    try {
+      const help = await commandHelp(ov.command.name)
+      if (this.state.overlay !== ov)
+        return
+      ov.help = help
+      ov.loading = false
+    }
+    catch (error) {
+      if (this.state.overlay !== ov)
+        return
+      ov.error = error.message || String(error)
+      ov.loading = false
     }
     this.update()
   }
 
-  // ---- command builder ----
-
   handleCommandBuilderKey(key) {
     const ov = this.state.overlay
-    const { name, ctrl, shift, text } = key
-
-    if (ctrl && name === 'c') { this.#closeOverlay(); return }
-
-    if (ov.mode === 'input') {
-      switch (name) {
-        case 'escape':
-          this.#closeOverlay()
-          this.update()
-          return
-        case 'enter': {
-          const cmd = ov.command
-          const args = ov.args.trim() ? ov.args.trim().split(/\s+/) : []
-          this.#closeOverlay()
-          if (needsConfirmation(cmd.name)) {
-            this.#confirmCommand(cmd.name, [...args])
-          }
-          else {
-            void this.executeCommand([cmd.name, ...args], false)
-          }
-          return
-        }
-        case 'tab':
-          ov.mode = 'help'
-          this.update()
-          return
-        case 'backspace':
-          ov.args = ov.args.slice(0, -1)
-          this.update()
-          return
-        case 'space':
-          ov.args += ' '
-          this.update()
-          return
-      }
-      if (text && text.length === 1 && !ctrl && !shift) {
-        ov.args += text
+    const { name, ctrl, meta, text } = key
+    if (ctrl || meta) {
+      if (ctrl && !meta && name === 'u' && ov.mode === 'input') {
+        ov.args = ''
         this.update()
       }
       return
     }
-
-    // help viewport mode
     if (ov.mode === 'help') {
-      switch (name) {
-        case 'escape':
-          this.#closeOverlay()
-          this.update()
-          return
-        case 'tab':
-        case 'enter':
-          ov.mode = 'input'
-          this.update()
-          return
-        case 'j':
-        case 'down':
-          ov.scroll = Math.max(0, ov.scroll + 1)
-          this.update()
-          return
-        case 'k':
-        case 'up':
-          ov.scroll = Math.max(0, ov.scroll - 1)
-          this.update()
-          return
-        case 'h':
-        case 'left':
-          ov.scroll = Math.max(0, ov.scroll - 1)
-          this.update()
-          return
-        case 'l':
-        case 'right':
-          ov.scroll = Math.max(0, ov.scroll + 1)
-          this.update()
-          return
-        case 'pageup':
-        case 'pagedown': {
-          const delta = name === 'pagedown' ? 10 : -10
-          ov.scroll = Math.max(0, ov.scroll + delta)
-          this.update()
-          return
-        }
-        case 'g':
-        case 'home':
-          ov.scroll = 0
-          this.update()
-          return
-        case 'G':
-        case 'end':
-          ov.scroll = Number.MAX_SAFE_INTEGER
-          this.update()
+      if (name === 'escape' || name === 'q' || name === 'tab' || name === 'enter') {
+        ov.mode = 'input'
+        this.update()
       }
+      else if (name === 'r' && !ov.loading) {
+        void this.#loadCommandHelp(ov)
+      }
+      else {
+        this.#scrollOverlay(ov, name)
+      }
+      return
     }
+    if (name === 'escape') { this.#closeOverlay(); return }
+    if (name === 'tab') {
+      ov.mode = 'help'
+      this.update()
+      return
+    }
+    if (name === 'enter') {
+      if (ov.loading || ov.error)
+        return
+      const args = ov.args.trim() ? ov.args.trim().split(/\s+/) : []
+      if (needsConfirmation(ov.command.name)) {
+        this.#confirmCommand(ov.command.name, args, ov)
+      }
+      else {
+        this.#cancelOverlayFlow()
+        void this.executeCommand([ov.command.name, ...args], false)
+      }
+      return
+    }
+    if (name === 'backspace')
+      ov.args = deleteLastGrapheme(ov.args)
+    else if (text)
+      ov.args += text
+    else return
+    this.update()
   }
 
-  // ---- custom tool ----
-
   openCustomTool() {
-    this.state.overlay = {
-      type: 'CustomTool',
-      input: '',
-      scope: this.state.scope,
+    if (!this.state.configTarget) {
+      this.openConfigTarget(null, { kind: 'custom' })
+      return
     }
+    this.state.overlay = { type: 'CustomTool', parent: null, input: '', error: '' }
     this.update()
   }
 
   handleCustomToolKey(key) {
     const ov = this.state.overlay
-    const { name, ctrl, shift, text } = key
-
-    if (ctrl && name === 'c') { this.#closeOverlay(); return }
-
-    switch (name) {
-      case 'escape':
-        this.#closeOverlay()
-        this.update()
-        return
-      case 'enter': {
-        const spec = ov.input.trim()
-        if (!spec)
-          return
-        this.#closeOverlay()
-        const scopeFlag = ov.scope === SCOPE.Global ? ['--global'] : []
-        this.executeBackground(['use', '--yes', ...scopeFlag, spec], `use ${spec}`)
-        return
-      }
-      case 'tab':
-        ov.scope = ov.scope === SCOPE.Project ? SCOPE.Global : SCOPE.Project
-        this.update()
-        return
-      case 'backspace':
-        ov.input = ov.input.slice(0, -1)
-        this.update()
-        return
-      case 'space':
-        ov.input += ' '
-        this.update()
-        return
+    const { name, ctrl, meta, text } = key
+    if (ctrl || meta) {
+      if (ctrl && !meta && name === 'u')
+        ov.input = ''
+      else return
     }
-    if (text && text.length === 1 && !ctrl && !shift) {
+    else if (name === 'escape') { this.#closeOverlay(); return }
+    else if (name === 'enter') {
+      const spec = ov.input.trim()
+      if (spec && this.useTool(spec))
+        this.#cancelOverlayFlow()
+      return
+    }
+    else if (name === 'backspace') {
+      ov.input = deleteLastGrapheme(ov.input)
+    }
+    else if (text) {
       ov.input += text
-      this.update()
     }
+    else {
+      return
+    }
+    this.update()
   }
 
-  // ---- confirm ----
+  useTool(spec) {
+    let target
+    try {
+      if (!this.state.configTarget)
+        throw new Error(t(this.state.language, 'config_target_none'))
+      target = validateConfigTarget(this.state.configTarget.path, this.state.configTarget.create)
+      this.state.configTarget = target
+    }
+    catch (error) {
+      const message = t(this.state.language, 'config_target_invalid', { error: error.message || String(error) })
+      if (this.state.overlay) {
+        this.state.overlay.error = message
+        this.state.overlay.scroll = 0
+      }
+      this.state.status = message
+      this.update()
+      return false
+    }
+    this.executeBackground(['use', '--yes', '--path', target.path, spec], `use ${spec} → ${target.path}`, (task) => {
+      if (this.state.configTarget?.path !== target.path)
+        return
+      let created = task.status === 'done'
+      if (!created) {
+        try { created = statSync(target.path).isFile() }
+        catch (error) {
+          if (error.code !== 'ENOENT')
+            throw error
+        }
+      }
+      if (created)
+        this.state.configTarget = { path: target.path, create: false }
+    })
+    return true
+  }
 
-  #confirmCommand(cmdName, args) {
+  #confirmCommand(command, args, parent) {
     this.state.overlay = {
       type: 'ConfirmCommand',
-      command: cmdName,
+      parent,
+      command,
       args,
-      message: t(this.state.language, 'confirm_command', { command: [cmdName, ...args].join(' ') }),
+      scroll: 0,
+      message: t(this.state.language, 'confirm_command', { command: ['mise', command, ...args].join(' ') }),
     }
     this.update()
   }
@@ -848,245 +979,178 @@ export class Application {
   #confirmDelete(name, onConfirm) {
     this.state.overlay = {
       type: 'ConfirmDelete',
+      parent: null,
       name,
-      message: t(this.state.language, 'confirm_delete', { name }),
+      scroll: 0,
       onConfirm,
+      message: t(this.state.language, 'confirm_delete', { name }),
     }
     this.update()
   }
 
   handleConfirmKey(key) {
+    if (key.ctrl || key.meta)
+      return
     const ov = this.state.overlay
     const { name } = key
-
-    switch (name) {
-      case 'enter':
-      case 'y': {
-        const cb = ov.onConfirm
-        const cmdName = ov.command
-        const args = ov.args || []
-        this.#closeOverlay()
-        if (cb) { void cb(); return }
-        if (cmdName) { void this.executeCommand([cmdName, ...args], false); return }
-        this.update()
-        return
-      }
-      case 'escape':
-      case 'n':
-      case 'q':
-        this.#closeOverlay()
-        this.update()
+    if (name === 'enter' || name === 'y') {
+      this.#cancelOverlayFlow()
+      if (ov.onConfirm)
+        ov.onConfirm()
+      else if (ov.command)
+        void this.executeCommand([ov.command, ...(ov.args || [])], false)
+    }
+    else if (name === 'escape' || name === 'n' || name === 'q') {
+      this.#closeOverlay()
+    }
+    else {
+      this.#scrollOverlay(ov, name)
     }
   }
 
-  // ---- execute ----
-
   async executeCommand(args, passthrough) {
     const cmdStr = args.join(' ')
-    this.state.status = t(this.state.language, 'executing', { command: cmdStr })
-    this.update()
-
-    if (passthrough || isInteractive(args[0])) {
-      // interactive: hand off to terminal
-      try {
-        const proc = Bun.spawn(['mise', ...args], {
-          stdout: 'inherit',
-          stderr: 'inherit',
-          stdin: 'inherit',
-        })
-        await proc.exited
-        this.finishCommand({
-          command: `mise ${cmdStr}`,
-          output: '',
-          success: proc.exitCode === 0,
-        })
-      }
-      catch {
-        this.finishCommand({
-          command: `mise ${cmdStr}`,
-          output: err.message || String(err),
-          success: false,
-        })
-      }
+    if (!passthrough && ['use', 'install', 'uninstall', 'upgrade'].includes(args[0])) {
+      this.executeBackground(args, cmdStr)
       return
     }
-
+    this.state.status = t(this.state.language, 'executing', { command: cmdStr })
+    this.update()
     try {
-      const result = await execute(args)
-      this.finishCommand(result)
+      if (passthrough || isInteractive(args[0])) {
+        const proc = Bun.spawn(['mise', ...args], { stdout: 'inherit', stderr: 'inherit', stdin: 'inherit' })
+        const exitCode = await proc.exited
+        this.finishCommand({ command: `mise ${cmdStr}`, output: '', success: exitCode === 0 })
+      }
+      else {
+        this.finishCommand(await execute(args))
+      }
     }
-    catch {
-      this.finishCommand({
-        command: `mise ${cmdStr}`,
-        output: err.message || String(err),
-        success: false,
-      })
+    catch (error) {
+      this.finishCommand({ command: `mise ${cmdStr}`, output: error.message || String(error), success: false })
     }
   }
 
   finishCommand(result) {
-    this.state.logs.unshift({
-      command: result.command || '',
-      output: result.output || '',
-      success: result.success !== false,
-    })
-    // keep max 100 log entries
-    if (this.state.logs.length > 100)
-      this.state.logs = this.state.logs.slice(0, 100)
-    if (result.success) {
-      this.state.status = t(this.state.language, 'command_success')
+    const selection = this.#captureSelection()
+    this.state.logs.unshift({ command: result.command || '', output: result.output || '', success: result.success !== false })
+    this.state.logs.length = Math.min(this.state.logs.length, 100)
+    this.#restoreSelection(selection)
+    this.state.status = result.success
+      ? t(this.state.language, 'command_success')
+      : t(this.state.language, 'command_failed', { error: result.output || t(this.state.language, 'unknown_error') })
+    this.update()
+    if (result.success)
       void this.refresh()
-    }
-    else {
-      this.state.status = t(this.state.language, 'command_failed', {
-        error: result.output || 'unknown error',
-      })
-      this.update()
-    }
   }
 
-  // ---- background tasks ----
-
-  executeBackground(args, label) {
+  executeBackground(args, label, onComplete = null) {
+    const argv = [...args]
     const task = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       label,
-      command: `mise ${args.join(' ')}`,
+      command: `mise ${argv.join(' ')}`,
       status: 'pending',
       output: '',
       startTime: Date.now(),
       endTime: 0,
     }
+    const selection = this.#captureSelection()
     this.state.consoleTasks.unshift(task)
-    if (this.state.consoleTasks.length > 100)
-      this.state.consoleTasks = this.state.consoleTasks.slice(0, 100)
+    this.state.consoleTasks.length = Math.min(this.state.consoleTasks.length, 100)
+    this.#restoreSelection(selection)
     this.update()
-
-    const proc = Bun.spawn(['mise', ...args], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-
-    task.status = 'running'
-    this.update()
-
-    // Read output asynchronously without blocking
-    ;(async () => {
+    void (async () => {
       try {
-        const [stdout, stderr] = await Promise.all([
+        const proc = Bun.spawn(['mise', ...argv], { stdout: 'pipe', stderr: 'pipe' })
+        task.status = 'running'
+        this.update()
+        const [stdout, stderr, exitCode] = await Promise.all([
           new Response(proc.stdout).text(),
           new Response(proc.stderr).text(),
+          proc.exited,
         ])
-        task.output = (`${stdout}\n${stderr}`).trim()
-        task.status = proc.exitCode === 0 ? 'done' : 'failed'
+        task.output = `${stdout}\n${stderr}`.trim()
+        task.status = exitCode === 0 ? 'done' : 'failed'
       }
-      catch {
-        task.output = err.message || String(err)
+      catch (error) {
+        task.output = error.message || String(error)
         task.status = 'failed'
       }
-      finally {
-        task.endTime = Date.now()
-        this.update()
-        // Also log to command history
-        this.state.logs.unshift({
-          command: task.command,
-          output: task.output,
-          success: task.status === 'done',
-        })
-        if (this.state.logs.length > 100)
-          this.state.logs = this.state.logs.slice(0, 100)
+      task.endTime = Date.now()
+      try {
+        if (onComplete)
+          await onComplete(task)
       }
+      catch (error) {
+        task.output = [task.output, error.message || String(error)].filter(Boolean).join('\n')
+        task.status = 'failed'
+      }
+      this.finishCommand({ command: task.command, output: task.output, success: task.status === 'done' })
     })()
+    return task
   }
 
-  // ---- page actions ----
-
   async useSelectedVersion() {
-    const tool = this.selectedTool()
-    if (!tool)
-      return
-    this.state.overlay = null
     await this.openVersionsForAction(VERSION_INTENT.Use)
   }
 
   async installSelectedVersion() {
-    const tool = this.selectedTool()
-    if (!tool)
-      return
-    this.state.overlay = null
     await this.openVersionsForAction(VERSION_INTENT.Install)
   }
 
-  async openVersionsForAction(intent) {
-    const tool = this.selectedTool()
+  async openVersionsForAction(intent, tool = this.selectedTool()) {
     if (!tool)
       return
-    this.state.overlay = {
-      type: 'Picker',
-      level: 'versions',
-      versions: [],
-      selected: 0,
-      intent,
-      selectedTool: { name: tool.name, backends: [] },
-      tools: [],
-      backends: ['All'],
-      filterIdx: 0,
-      search: '',
-      statusText: t(this.state.language, 'loading_versions'),
+    if (intent !== VERSION_INTENT.Install && !this.state.configTarget) {
+      this.openConfigTarget(null, { kind: 'use', tool: { ...tool } })
+      return
     }
-    this.update()
-    try {
-      const versions = await remoteVersions(tool.name)
-      this.state.overlay.versions = versions
-      this.state.overlay.statusText = ''
-    }
-    catch {
-      this.state.overlay.statusText = t(this.state.language, 'error_load_failed')
-      this.state.overlay.versions = []
-    }
-    this.update()
+    await this.#openVersions(tool.name, null, intent)
   }
 
   async deleteSelectedTool() {
     const tool = this.selectedTool()
     if (!tool)
       return
-    this.#confirmDelete(tool.name, () => {
-      this.executeBackground(['uninstall', '--yes', tool.name], `uninstall ${tool.name}`)
-    })
+    const spec = `${tool.name}@${tool.version}`
+    this.#confirmDelete(spec, () => this.executeBackground(['uninstall', '--yes', spec], `uninstall ${spec}`))
   }
 
   toggleSelectedUpdate() {
     const update = this.selectedUpdate()
     if (!update)
       return
-    if (this.state.selectedUpdates.has(update.name)) {
+    if (this.state.selectedUpdates.has(update.name))
       this.state.selectedUpdates.delete(update.name)
-    }
-    else {
-      this.state.selectedUpdates.add(update.name)
-    }
+    else this.state.selectedUpdates.add(update.name)
     this.update()
   }
 
-  async upgradeSelected() {
-    const updates = this.state.snapshot.updates || []
-    const toUpgrade = this.state.selectedUpdates.size > 0
-      ? updates.filter(u => this.state.selectedUpdates.has(u.name))
-      : updates
-
-    if (toUpgrade.length === 0)
+  async upgradeSelected(allVisible = false) {
+    const visible = this.visibleItems()
+    if (this.state.page !== PAGE.Updates || !visible.length)
       return
-
-    const names = toUpgrade.map(u => u.name)
+    const marked = this.state.selectedUpdates.size > 0
+    const updates = allVisible
+      ? visible
+      : marked
+        ? this.state.snapshot.updates.filter(item => this.state.selectedUpdates.has(item.name))
+        : [visible[this.state.selected]].filter(Boolean)
+    const names = [...new Set(updates.map(item => item.name))]
+    if (!names.length)
+      return
+    const range = t(this.state.language, allVisible ? 'upgrade_visible' : marked ? 'upgrade_marked' : 'upgrade_current')
     this.state.overlay = {
       type: 'ConfirmCommand',
+      parent: null,
       command: 'upgrade',
       args: ['--yes', ...names],
-      message: t(this.state.language, 'confirm_upgrade', { count: names.length }),
+      scroll: 0,
+      message: `${t(this.state.language, 'confirm_upgrade', { count: names.length, range })}\n${names.join('\n')}\n\n${t(this.state.language, 'operation_not_target')}`,
       onConfirm: () => {
-        this.state.selectedUpdates.clear()
-        this.executeBackground(['upgrade', '--yes', ...names], `upgrade ${names.length} tool(s)`)
+        for (const name of names) this.state.selectedUpdates.delete(name)
+        this.executeBackground(['upgrade', '--yes', ...names], `upgrade ${names.join(' ')}`)
       },
     }
     this.update()
@@ -1094,153 +1158,119 @@ export class Application {
 
   async runSelectedTask() {
     const task = this.selectedTask()
-    if (!task)
-      return
-    await this.executeCommand(['run', task.name], true)
+    if (task)
+      await this.executeCommand(['run', task.name], true)
   }
 
   async openConfig() {
     const config = this.selectedConfig()
-    if (!config)
-      return
-    await this.executeCommand(['edit', config.path], true)
+    if (config)
+      await this.executeCommand(['edit', config.path], true)
   }
 
   async runPageCommand() {
-    const cmd = this.selectedPageCommand()
-    if (!cmd)
-      return
-    this.#openCommandBuilder(cmd)
+    const command = this.selectedPageCommand()
+    if (command)
+      await this.#openCommandBuilder(command)
   }
 
-  async toggleLanguage() {
-    const cur = this.state.language
-    this.state.language = cur === 'en' ? 'zh' : 'en'
-    saveSettings({ language: this.state.language })
-    this.state.status = `Language: ${this.state.language}`
-    this.update()
-  }
-
-  setScope(scope) {
-    if (this.state.scope === scope)
+  applySelectedLanguage() {
+    const candidate = this.visibleItems()[this.state.selected]
+    if (!candidate || candidate.id === this.state.language)
       return
-    this.state.scope = scope
-    this.state.status = t(this.state.language, scope === SCOPE.Project ? 'scope_project' : 'scope_global')
+    try {
+      saveSettings({ language: candidate.id })
+      this.state.language = candidate.id
+      this.state.status = t(candidate.id, 'current_language', { lang: candidate.name })
+    }
+    catch (error) {
+      this.state.status = t(this.state.language, 'language_save_failed', { error: error.message || String(error) })
+    }
     this.update()
   }
 
   showHelp() {
-    this.state.overlay = { type: 'Help' }
+    this.state.overlay = { type: 'Help', parent: null, scroll: 0 }
     this.update()
   }
 
-  // ---- navigation helpers ----
-
-  jumpToPage(page) {
-    if (this.state.page === page)
-      return
-    this.state.page = page
-    this.state.focus = FOCUS.Navigation
-    this.state.selected = 0
-    this.state.detailScroll = 0
-    this.state.search = ''
+  jumpToPage(page, focus = FOCUS.List) {
+    this.state.overlay = null
+    this.state.focus = focus
+    if (this.state.page !== page) {
+      this.state.page = page
+      this.state.selected = page === PAGE.Preferences
+        ? Math.max(0, LANGUAGES.findIndex(language => language.id === this.state.language))
+        : 0
+      this.state.detailScroll = 0
+      this.state.search = ''
+    }
     this.clampSelection()
     this.update()
   }
 
-  changePage(delta) {
-    const idx = PAGE_ORDER.indexOf(this.state.page)
-    if (idx < 0)
-      return
-    const newIdx = ((idx + delta) % PAGE_ORDER.length + PAGE_ORDER.length) % PAGE_ORDER.length
-    this.jumpToPage(PAGE_ORDER[newIdx])
+  changePage(delta, focus = FOCUS.List) {
+    this.jumpToPage(PAGE_ORDER[moveIndex(PAGE_ORDER.indexOf(this.state.page), delta, PAGE_ORDER.length)], focus)
   }
 
   cycleFocus(delta) {
     const seq = focusSeq()
-    const idx = seq.indexOf(this.state.focus)
-    if (idx < 0) {
-      this.state.focus = FOCUS.Navigation
-    }
-    else {
-      const newIdx = ((idx + delta) % seq.length + seq.length) % seq.length
-      this.state.focus = seq[newIdx]
-    }
+    this.state.focus = seq[moveIndex(seq.indexOf(this.state.focus), delta, seq.length)]
     this.update()
   }
 
   moveVertical(delta) {
-    const { focus } = this.state
-    if (focus === FOCUS.Navigation) {
-      // in nav, move between pages
-      this.changePage(delta)
+    if (this.state.focus === FOCUS.Navigation) {
+      this.changePage(delta, FOCUS.Navigation)
     }
-    else if (focus === FOCUS.List) {
-      const len = this.currentListLen()
-      this.state.selected = moveIndex(this.state.selected, delta, len)
+    else if (this.state.focus === FOCUS.List) {
+      this.state.selected = moveIndex(this.state.selected, delta, this.currentListLen())
+      this.state.detailScroll = 0
       this.clampSelection()
       this.update()
     }
-    else if (focus === FOCUS.Details) {
-      this.state.detailScroll = Math.max(0, this.state.detailScroll + delta)
+    else {
+      this.state.detailScroll = Math.max(0, Math.min(this.#detailMaxScroll, this.state.detailScroll + delta))
       this.update()
     }
   }
 
   moveFocus(delta) {
     const seq = focusSeq()
-    const idx = seq.indexOf(this.state.focus)
-    if (idx < 0) {
-      this.state.focus = FOCUS.Navigation
-    }
-    else {
-      const newIdx = Math.max(0, Math.min(seq.length - 1, idx + delta))
-      this.state.focus = seq[newIdx]
-    }
+    this.state.focus = seq[Math.max(0, Math.min(seq.length - 1, seq.indexOf(this.state.focus) + delta))]
     this.update()
   }
 
   #goTop() {
-    if (this.state.focus === FOCUS.List) {
+    if (this.state.focus === FOCUS.List)
       this.state.selected = 0
-      this.update()
-    }
-    else if (this.state.focus === FOCUS.Details) {
-      this.state.detailScroll = 0
-      this.update()
-    }
+    this.state.detailScroll = 0
+    this.update()
   }
 
   #goBottom() {
     if (this.state.focus === FOCUS.List) {
-      const len = this.currentListLen()
-      this.state.selected = len > 0 ? len - 1 : 0
-      this.update()
+      this.state.selected = Math.max(0, this.currentListLen() - 1)
+      this.state.detailScroll = 0
     }
     else if (this.state.focus === FOCUS.Details) {
-      this.state.detailScroll = Number.MAX_SAFE_INTEGER
-      this.update()
+      this.state.detailScroll = this.#detailMaxScroll
     }
+    this.update()
   }
 
   #dismissConsoleTasks() {
-    this.state.consoleTasks = this.state.consoleTasks.filter(t => t.status === 'pending' || t.status === 'running')
-    this.clampSelection()
+    const selection = this.#captureSelection()
+    this.state.consoleTasks = this.state.consoleTasks.filter(task => task.status === 'pending' || task.status === 'running')
+    this.#restoreSelection(selection)
     this.update()
   }
 
   #copyToClipboard(text) {
-    const platform = process.platform
-    let cmd
-    let args
-    if (platform === 'darwin') { cmd = 'pbcopy'; args = [] }
-    else if (platform === 'linux') { cmd = 'wl-copy'; args = [] }
-    else { cmd = 'clip'; args = [] }
-
-    const proc = spawnSync(cmd, args, { input: text, timeout: 3000 })
-    if (proc.status !== 0) {
-      throw new Error(proc.stderr?.toString() || 'clipboard unavailable')
-    }
+    const cmd = process.platform === 'darwin' ? 'pbcopy' : process.platform === 'linux' ? 'wl-copy' : 'clip'
+    const proc = spawnSync(cmd, [], { input: text, timeout: 3000 })
+    if (proc.status !== 0)
+      throw new Error(proc.error?.message || proc.stderr?.toString() || 'clipboard unavailable')
   }
 
   #copySelectedConfig() {
@@ -1251,148 +1281,83 @@ export class Application {
       return
     }
     try {
-      const text = readFileSync(config.path, 'utf8')
-      this.#copyToClipboard(text)
+      this.#copyToClipboard(readFileSync(config.path, 'utf8'))
       this.state.status = t(this.state.language, 'config_copied', { path: config.path })
     }
-    catch {
-      this.state.status = t(this.state.language, 'config_copy_failed', { error: err.message })
+    catch (error) {
+      this.state.status = t(this.state.language, 'config_copy_failed', { error: error.message || String(error) })
     }
     this.update()
   }
 
-  // ---- selection helpers ----
-
-  #filteredTools() {
-    const tools = this.state.snapshot.tools || []
-    if (!this.state.search)
-      return tools
-    const q = this.state.search.toLowerCase()
-    return tools.filter(t => containsCaseInsensitive(t.name, q))
-  }
-
-  #filteredUpdates() {
-    const updates = this.state.snapshot.updates || []
-    if (!this.state.search)
-      return updates
-    const q = this.state.search.toLowerCase()
-    return updates.filter(u => containsCaseInsensitive(u.name, q))
-  }
-
-  #filteredTasks() {
-    const tasks = this.state.snapshot.tasks || []
-    if (!this.state.search)
-      return tasks
-    const q = this.state.search.toLowerCase()
-    return tasks.filter(t =>
-      containsCaseInsensitive(t.name, q)
-      || containsCaseInsensitive(t.description, q),
-    )
-  }
-
-  #filteredConfigs() {
-    const configs = this.state.snapshot.configs || []
-    if (!this.state.search)
-      return configs
-    const q = this.state.search.toLowerCase()
-    return configs.filter(c => containsCaseInsensitive(c.path, q))
-  }
-
-  #filteredLogs() {
-    if (!this.state.search)
-      return this.state.logs
-    const q = this.state.search.toLowerCase()
-    return this.state.logs.filter(l =>
-      containsCaseInsensitive(l.command, q)
-      || containsCaseInsensitive(l.output, q),
-    )
-  }
-
-  #filteredPageCommands() {
-    const { page, commands } = this.state
-    const pageCmds = page === PAGE.Dashboard
-      ? DASHBOARD_COMMANDS
-      : commands.filter(c => commandBelongsToPage(page, c.name))
-    if (!this.state.search)
-      return pageCmds
-    const q = this.state.search.toLowerCase()
-    return pageCmds.filter(c => c.toLowerCase().includes(q))
-  }
-
-  selectedTool() {
-    const filtered = this.#filteredTools()
-    return filtered[this.state.selected] || null
-  }
-
-  selectedUpdate() {
-    const filtered = this.#filteredUpdates()
-    return filtered[this.state.selected] || null
-  }
-
-  selectedTask() {
-    const filtered = this.#filteredTasks()
-    return filtered[this.state.selected] || null
-  }
-
-  selectedConfig() {
-    const filtered = this.#filteredConfigs()
-    return filtered[this.state.selected] || null
-  }
-
-  selectedLog() {
-    const filtered = this.#filteredLogs()
-    return filtered[this.state.selected] || null
-  }
-
-  selectedPageCommand() {
-    const filtered = this.#filteredPageCommands()
-    const match = filtered[this.state.selected]
-    if (!match)
-      return null
-    if (typeof match === 'string') {
-      const full = this.state.commands.find(c => c.name === match)
-      return full || { name: match, description: '' }
-    }
-    return match
-  }
-
-  matches(primary, secondary) {
-    if (!this.state.search)
-      return true
-    const q = this.state.search.toLowerCase()
-    return (primary || '').toLowerCase().includes(q)
-      || (secondary || '').toLowerCase().includes(q)
-  }
-
-  currentListLen() {
-    switch (this.state.page) {
-      case PAGE.Tools: return this.#filteredTools().length
-      case PAGE.Updates: return this.#filteredUpdates().length
-      case PAGE.Tasks: return this.#filteredTasks().length
-      case PAGE.Config: return this.#filteredConfigs().length
-      case PAGE.Logs: return this.#filteredLogs().length
-      case PAGE.Dashboard:
+  visibleItems() {
+    const { page, snapshot, search, commands } = this.state
+    const matches = (...fields) => fields.some(field => containsCaseInsensitive(field || '', search))
+    switch (page) {
+      case PAGE.Dashboard: return []
+      case PAGE.Tools: return search ? snapshot.tools.filter(item => matches(item.name, item.version)) : snapshot.tools
+      case PAGE.Updates: return search ? snapshot.updates.filter(item => matches(item.name, item.current)) : snapshot.updates
+      case PAGE.Tasks: return search ? snapshot.tasks.filter(item => matches(item.name, item.description)) : snapshot.tasks
+      case PAGE.Config: return search ? snapshot.configs.filter(item => matches(item.path, item.tools.join(' '))) : snapshot.configs
+      case PAGE.Console: return search ? this.state.consoleTasks.filter(item => matches(item.label, item.command, item.output)) : this.state.consoleTasks
+      case PAGE.Logs: return search ? this.state.logs.filter(item => matches(item.command, item.output)) : this.state.logs
       case PAGE.Environment:
-      case PAGE.System:
-      case PAGE.Preferences:
-        return this.#filteredPageCommands().length
-      default: return 0
+      case PAGE.System: return filterCommands(commands.filter(item => commandBelongsToPage(page, item.name)), search)
+      case PAGE.Preferences: return LANGUAGES
+      default: return []
     }
   }
+
+  selectedTool() { return this.state.page === PAGE.Tools ? this.visibleItems()[this.state.selected] || null : null }
+  selectedUpdate() { return this.state.page === PAGE.Updates ? this.visibleItems()[this.state.selected] || null : null }
+  selectedTask() { return this.state.page === PAGE.Tasks ? this.visibleItems()[this.state.selected] || null : null }
+  selectedConfig() { return this.state.page === PAGE.Config ? this.visibleItems()[this.state.selected] || null : null }
+  selectedLog() { return this.state.page === PAGE.Logs ? this.visibleItems()[this.state.selected] || null : null }
+  selectedPageCommand() {
+    return [PAGE.Environment, PAGE.System].includes(this.state.page) ? this.visibleItems()[this.state.selected] || null : null
+  }
+
+  currentListLen() { return this.visibleItems().length }
 
   clampSelection() {
     const len = this.currentListLen()
-    if (len <= 0) {
-      this.state.selected = 0
-    }
-    else {
-      this.state.selected = Math.max(0, Math.min(this.state.selected, len - 1))
+    this.state.selected = Math.max(0, Math.min(this.state.selected, len - 1))
+    if (!len)
+      this.state.detailScroll = 0
+  }
+
+  #itemKey(item) {
+    if (!item)
+      return null
+    switch (this.state.page) {
+      case PAGE.Tools: return `${item.name}\0${item.version}`
+      case PAGE.Config: return item.path
+      case PAGE.Console: return item.id
+      case PAGE.Logs: return item
+      case PAGE.Preferences: return item.id
+      default: return item.name
     }
   }
 
-  // ---- internal helpers ----
+  #captureSelection() {
+    return this.#itemKey(this.visibleItems()[this.state.selected])
+  }
+
+  #restoreSelection(key) {
+    const index = key === null ? -1 : this.visibleItems().findIndex(item => this.#itemKey(item) === key)
+    if (index >= 0)
+      this.state.selected = index
+    else this.state.detailScroll = 0
+    this.clampSelection()
+  }
 
   #closeOverlay() {
+    this.state.overlay = this.state.overlay?.parent || null
+    this.update()
+  }
+
+  #cancelOverlayFlow() {
     this.state.overlay = null
+    this.update()
   }
 }

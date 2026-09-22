@@ -1,3 +1,7 @@
+import stringWidth from 'string-width'
+
+const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
+
 export const PAGE = {
   Dashboard: 'Dashboard',
   Tools: 'Tools',
@@ -30,11 +34,6 @@ export const FOCUS = {
   Details: 'Details',
 }
 
-export const SCOPE = {
-  Project: 'Project',
-  Global: 'Global',
-}
-
 export const VERSION_INTENT = {
   Add: 'Add',
   Use: 'Use',
@@ -49,11 +48,14 @@ export const OVERLAY_TYPE = {
   CommandPalette: 'CommandPalette',
   CommandBuilder: 'CommandBuilder',
   CustomTool: 'CustomTool',
+  ConfigTarget: 'ConfigTarget',
   ConfirmDelete: 'ConfirmDelete',
   ConfirmCommand: 'ConfirmCommand',
 }
 
-export function layoutMode(width, _height) {
+export function layoutMode(width, height) {
+  if (width < 60 || height < 8)
+    return 'small'
   if (width >= 100)
     return 'dual'
   if (width >= 60)
@@ -73,19 +75,56 @@ export function moveIndex(current, delta, len) {
 }
 
 export function clipColumns(value, width) {
-  if (!value)
+  if (!value || width <= 0)
     return ''
-  const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
-  const graphemes = [...segmenter.segment(value)].map(s => s.segment)
-  if (graphemes.length <= width)
+  if (stringWidth(value) <= width)
     return value
-  if (width <= 3)
-    return '…'.slice(0, width)
-  return `${graphemes.slice(0, width - 1).join('')}…`
+  let result = ''
+  let columns = 0
+  for (const { segment } of segmenter.segment(value)) {
+    const size = stringWidth(segment)
+    if (columns + size > width - 1)
+      break
+    result += segment
+    columns += size
+  }
+  return `${result}…`
+}
+
+export function deleteLastGrapheme(value) {
+  let last = 0
+  for (const segment of segmenter.segment(value))
+    last = segment.index
+  return value.slice(0, last)
+}
+
+export function supportsConfigTarget(path) {
+  return path.endsWith('.toml') && path.split(/[\\/]/).at(-1) !== 'rust-toolchain.toml'
+}
+
+export function filterCommands(commands, query) {
+  return query
+    ? commands.filter(command => containsCaseInsensitive(command.name, query)
+      || containsCaseInsensitive(command.description || '', query))
+    : commands
 }
 
 export function containsCaseInsensitive(value, query) {
   if (!query)
     return true
   return value.toLowerCase().includes(query.toLowerCase())
+}
+
+export function filterRegistryTools(overlay) {
+  let filtered = overlay.tools || []
+  if (overlay.search) {
+    const query = overlay.search.toLowerCase()
+    filtered = filtered.filter(tool => tool.name.toLowerCase().includes(query)
+      || (tool.description && tool.description.toLowerCase().includes(query)))
+  }
+  if (overlay.filterIdx > 0 && overlay.backends) {
+    const backend = overlay.backends[overlay.filterIdx]
+    filtered = filtered.filter(tool => tool.backends && tool.backends.includes(backend))
+  }
+  return filtered
 }

@@ -3,6 +3,24 @@ import { resolve } from 'node:path'
 import process from 'node:process'
 import { runCli } from './cli.js'
 
+export function normalizeKey(key) {
+  let name = key.name === 'return' ? 'enter' : key.name
+  let text = ''
+  if (!key.ctrl && !key.meta && !key.super && !key.hyper) {
+    const printable = value => typeof value === 'string' && /^[^\p{Cc}\p{Cs}]$/u.test(value)
+    if (printable(key.sequence))
+      text = key.sequence
+    else if (printable(name))
+      text = key.shift && /^[a-z]$/.test(name) ? name.toUpperCase() : name
+    if (text)
+      name = text === ' ' ? 'space' : text
+  }
+  else if (/^[A-Z]$/.test(name)) {
+    name = name.toLowerCase()
+  }
+  return { name, ctrl: key.ctrl, meta: key.meta, shift: key.shift, text, code: key.code }
+}
+
 export async function main(args = process.argv.slice(2)) {
   const cliResult = await runCli(args)
   if (cliResult !== null)
@@ -92,8 +110,7 @@ export async function main(args = process.argv.slice(2)) {
       if (key.eventType === 'release')
         return
       key.preventDefault()
-      const text = key.name.length === 1 && !key.ctrl && !key.meta ? key.name : ''
-      app.handleKey({ name: key.name, ctrl: key.ctrl, meta: key.meta, shift: key.shift, text, code: key.code })
+      app.handleKey(normalizeKey(key))
     })
 
     app.update()

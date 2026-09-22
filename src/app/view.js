@@ -1,7 +1,10 @@
+import { relative } from 'node:path'
 import { fg, StyledText, TextRenderable } from '@opentui/core'
 import stringWidth from 'string-width'
-import { t } from '../config/i18n.js'
-import { clipColumns, containsCaseInsensitive, FOCUS, layoutMode, PAGE_ORDER } from './state.js'
+import { LANGUAGES, t } from '../config/i18n.js'
+import { clipColumns, filterCommands, filterRegistryTools, FOCUS, layoutMode, PAGE_ORDER, supportsConfigTarget } from './state.js'
+
+const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
 
 const COLORS = {
   text: '#d4d4d4',
@@ -26,7 +29,7 @@ const NODE_IDS = [
   'status',
   'statusInner',
   'keys',
-  'modal',
+  'modalFrame',
   'modalInner',
   'modalSelection',
 ]
@@ -34,6 +37,29 @@ const NODE_IDS = [
 function padColumns(value, width) {
   const clipped = clipColumns(value, width)
   return `${clipped}${' '.repeat(Math.max(0, width - stringWidth(clipped)))}`
+}
+
+/** Wrap text to fit within a given width, preserving newlines. */
+function wrap(value, width) {
+  if (width <= 0)
+    return []
+  const result = []
+  for (const line of value.split('\n')) {
+    let current = ''
+    let columns = 0
+    for (const { segment } of segmenter.segment(line)) {
+      const size = stringWidth(segment)
+      if (columns + size > width && current) {
+        result.push(current)
+        current = ''
+        columns = 0
+      }
+      current += size > width ? '…' : segment
+      columns += size > width ? 1 : size
+    }
+    result.push(current)
+  }
+  return result
 }
 
 /** Keep the selected row visible and retain its position. */
@@ -49,14 +75,12 @@ function windowContent(lines, index, size) {
 }
 
 /** Sidebar: page navigation. */
-function navContent(s) {
-  const entries = PAGE_ORDER.map((page, _i) => {
-    const marker = page === s.page ? '▸' : ' '
-    return `${marker} ${pageName(page, s.language)}`
-  })
+function navContent(s, capacity) {
+  const shortcuts = { Dashboard: '1', Tools: '2', Updates: '3', Tasks: '4', Environment: '5', Config: '6', System: '7', Preferences: '8', Console: '9', Logs: '0' }
+  const entries = PAGE_ORDER.map(page => `${page === s.page ? '▸' : ' '} ${shortcuts[page]} ${pageName(page, s.language)}`)
   return {
-    title: t(s.language, 'Sections', 'Sections'),
-    ...windowContent(entries, PAGE_ORDER.indexOf(s.page), 20),
+    title: t(s.language, 'Sections'),
+    ...windowContent(entries, PAGE_ORDER.indexOf(s.page), capacity),
   }
 }
 
@@ -65,76 +89,69 @@ function pageName(page, language) {
 }
 
 /** Content list: varies by page. */
-function listContent(s) {
+function listContent(s, items, capacity, width) {
   const { page, snapshot, search, selected, language } = s
-  let items = []
   let title = ''
   let renderItem = null
 
   switch (page) {
     case 'Dashboard': {
       const stats = [
-        t(language, 'Installed tools: {count}', { count: snapshot.tools.length }),
-        t(language, 'Updates available: {count}', { count: snapshot.updates.filter(u => u.latest !== u.current).length }),
-        t(language, 'Available tasks: {count}', { count: snapshot.tasks.length }),
-        t(language, 'Config files: {count}', { count: snapshot.configs.length }),
+        t(language, 'dashboard_tools_count', { count: snapshot.tools.length }),
+        t(language, 'dashboard_updates_count', { count: snapshot.updates.filter(u => u.latest !== u.current).length }),
+        t(language, 'dashboard_tasks_count', { count: snapshot.tasks.length }),
+        t(language, 'dashboard_configs_count', { count: snapshot.configs.length }),
         '',
-        `mise ${snapshot.mise_version}`,
+        t(language, 'dashboard_version', { version: snapshot.mise_version }),
       ]
-      return { title: t(language, 'Dashboard'), lines: stats, selected: -1, counter: '' }
+      return { title: t(language, 'dashboard_title'), lines: stats, selected: -1, counter: '' }
     }
     case 'Tools': {
-      items = snapshot.tools.filter(tool => matches(tool.name, tool.version, search))
       title = t(language, 'Tools')
-      renderItem = tool => `${tool.installed ? '●' : '○'} ${clipColumns(tool.name, 20)}  ${clipColumns(tool.version, 12)}${!tool.active ? ` ${t(language, '(inactive)')}` : ''}`
+      renderItem = (tool) => {
+        const suffix = `${clipColumns(tool.version, 12)}${!tool.active ? ` ${t(language, '(inactive)')}` : ''}`
+        const nameWidth = Math.max(1, width - stringWidth(suffix) - 4)
+        return `${tool.installed ? '●' : '○'} ${padColumns(tool.name, nameWidth)}  ${suffix}`
+      }
       break
     }
     case 'Updates': {
-      items = snapshot.updates.filter(u => matches(u.name, u.current, search))
       title = t(language, 'Updates')
       renderItem = u => `${s.selectedUpdates.has(u.name) ? '[x]' : '[ ]'} ${clipColumns(u.name, 20)}  ${clipColumns(u.current, 10)} → ${clipColumns(u.latest, 10)}`
       break
     }
     case 'Tasks': {
-      items = snapshot.tasks.filter(t => matches(t.name, t.description, search))
       title = t(language, 'Tasks')
       renderItem = t => `▶ ${clipColumns(t.name, 30)}`
       break
     }
     case 'Environment':
     case 'System': {
-      items = s.commands.filter(cmd => pageCommandsMatch(cmd, page, search))
       title = t(language, page)
       renderItem = cmd => `${clipColumns(cmd.name, 20)}  ${clipColumns(cmd.description, 30)}`
       break
     }
     case 'Config': {
-      items = snapshot.configs.filter(c => matches(c.path, c.tools.join(' '), search))
       title = t(language, 'Config')
-      renderItem = c => `${c.path.includes('mise') ? '●' : '○'} ${clipColumns(c.path, 50)}`
+      renderItem = c => `${s.configTarget?.path === c.path ? '●' : '○'} ${clipPath(displayPath(c.path), width - 2)}${supportsConfigTarget(c.path) ? '' : ` [${t(language, 'config_target_unsupported')}]`}`
       break
     }
     case 'Preferences': {
       return {
-        title: t(language, 'Language'),
-        lines: [`  ${t(language, 'English')}`, `  ${t(language, '中文')}`],
-        ...windowContent([t(language, 'English'), t(language, '中文')], language === 'zh' ? 1 : 0, 10),
+        title: t(language, 'preferences_language'),
+        ...windowContent(items.map(item => `${item.id === language ? '●' : '○'} ${item.name}`), selected, capacity),
       }
     }
     case 'Console': {
-      const tasks = s.consoleTasks || []
-      items = tasks
       title = t(language, 'Console')
       renderItem = (task) => {
-        const icon = { pending: '⏳', running: '🔄', done: ' ✓', failed: ' ✗' }[task.status] || ' ?'
-        const elapsed = task.startTime ? ` ${Math.round((Date.now() - task.startTime) / 1000)}s` : ''
+        const icon = { pending: '·', running: '↻', done: '✓', failed: '✗' }[task.status] || '?'
+        const elapsed = task.startTime ? ` ${Math.round(((task.endTime || Date.now()) - task.startTime) / 1000)}s` : ''
         return `${icon} ${clipColumns(task.label, 40)}${clipColumns(elapsed, 8)}`
       }
       break
     }
     case 'Logs': {
-      const logs = [...s.logs].reverse().filter(l => matches(l.command, l.output, search))
-      items = logs
       title = t(language, 'Command Log')
       renderItem = l => `${l.success ? '✓' : '✗'} ${clipColumns(l.command, 50)}`
       break
@@ -142,39 +159,29 @@ function listContent(s) {
   }
 
   const entries = items.map(renderItem)
-  const content = windowContent(entries, selected, 20)
+  const content = windowContent(entries, selected, capacity)
   if (!entries.length) {
-    content.lines.push(t(language, search ? 'No results' : getEmptyMessage(page, language)))
+    content.lines.push(search ? t(language, 'no_results') : getEmptyMessage(page, language))
   }
   return { title, ...content }
 }
 
-function getEmptyMessage(page, _language) {
+function getEmptyMessage(page, language) {
   const map = {
-    Tools: 'No tools found',
-    Updates: 'No updates found',
-    Tasks: 'No tasks found',
-    Environment: 'No commands found',
-    Config: 'No configs found',
-    System: 'No commands found',
-    Logs: 'No logs found',
+    Tools: 'no_tools',
+    Updates: 'no_updates',
+    Tasks: 'no_tasks',
+    Environment: 'no_commands',
+    Config: 'no_configs',
+    System: 'no_commands',
+    Logs: 'no_logs',
   }
-  return map[page] || 'No items'
-}
-
-function matches(primary, secondary, query) {
-  if (!query)
-    return true
-  return containsCaseInsensitive(primary, query) || containsCaseInsensitive(secondary, query)
-}
-
-function pageCommandsMatch(cmd, page, query) {
-  return matches(cmd.name, cmd.description, query)
+  return t(language, map[page] || 'no_items')
 }
 
 /** Detail panel: shows info about selected item. */
-function detailContent(s) {
-  const { page, snapshot, selected, search, language, logs, scope, commands } = s
+function detailContent(s, items) {
+  const { page, snapshot, selected, language } = s
 
   let lines = []
   const title = t(language, 'Details')
@@ -182,30 +189,29 @@ function detailContent(s) {
   switch (page) {
     case 'Dashboard': {
       lines = [
-        `mise ${snapshot.mise_version}`,
+        t(language, 'dashboard_version', { version: snapshot.mise_version }),
         '',
-        t(language, 'Installed tools: {count}', { count: snapshot.tools.length }),
-        t(language, 'Updates available: {count}', { count: snapshot.updates.length }),
-        t(language, 'Tasks: {count}', { count: snapshot.tasks.length }),
-        t(language, 'Configs: {count}', { count: snapshot.configs.length }),
+        t(language, 'dashboard_tools_count', { count: snapshot.tools.length }),
+        t(language, 'dashboard_updates_count', { count: snapshot.updates.length }),
+        t(language, 'dashboard_tasks_count', { count: snapshot.tasks.length }),
+        t(language, 'dashboard_configs_count', { count: snapshot.configs.length }),
         '',
-        `${t(language, 'Scope')}: ${scope === 'Global' ? 'GLOBAL' : 'PROJECT'}`,
+        targetHint(s),
       ]
       break
     }
     case 'Tools': {
-      const filteredTools = snapshot.tools.filter(t => matches(t.name, t.version, search))
-      const tool = filteredTools[selected]
+      const tool = items[selected]
       if (tool) {
         lines = [
-          `${t(language, 'Tool')}: ${tool.name}`,
-          `${t(language, 'Version')}: ${tool.version}`,
-          `${t(language, 'Requested')}: ${tool.requested || '—'}`,
-          tool.source ? `${t(language, 'Source')}: ${tool.source}` : '',
-          `${t(language, 'Installed')}: ${tool.installed ? t(language, 'Yes') : t(language, 'No')}`,
-          `${t(language, 'Active')}: ${tool.active ? t(language, 'Yes') : t(language, 'No')}`,
+          `${t(language, 'detail_tool')}: ${tool.name}`,
+          `${t(language, 'detail_version')}: ${tool.version}`,
+          `${t(language, 'detail_requested')}: ${tool.requested || '—'}`,
+          tool.source ? `${t(language, 'detail_source')}: ${tool.source}` : '',
+          `${t(language, 'detail_installed')}: ${tool.installed ? t(language, 'installed') : t(language, 'not_installed')}`,
+          `${t(language, 'detail_active')}: ${tool.active ? t(language, 'active') : t(language, 'inactive')}`,
           '',
-          t(language, 'v: use version  i: install version  d: uninstall'),
+          t(language, 'detail_tools_hint'),
         ].filter(Boolean)
       }
       else {
@@ -214,15 +220,14 @@ function detailContent(s) {
       break
     }
     case 'Updates': {
-      const filteredUpdates = snapshot.updates.filter(u => matches(u.name, u.current, search))
-      const update = filteredUpdates[selected]
+      const update = items[selected]
       if (update) {
         lines = [
-          `${t(language, 'Tool')}: ${update.name}`,
-          `${t(language, 'Current')}: ${update.current}`,
-          `${t(language, 'Latest')}: ${update.latest}`,
+          `${t(language, 'detail_tool')}: ${update.name}`,
+          `${t(language, 'current')}: ${update.current}`,
+          `${t(language, 'latest')}: ${update.latest}`,
           '',
-          t(language, 'Space: toggle  U: upgrade all selected'),
+          t(language, 'detail_updates_hint'),
         ]
       }
       else {
@@ -231,15 +236,14 @@ function detailContent(s) {
       break
     }
     case 'Tasks': {
-      const filteredTasks = snapshot.tasks.filter(t => matches(t.name, t.description, search))
-      const task = filteredTasks[selected]
+      const task = items[selected]
       if (task) {
         lines = [
-          `${t(language, 'Task')}: ${task.name}`,
-          `${t(language, 'Description')}: ${task.description || '—'}`,
-          `${t(language, 'Command')}: ${task.command || '—'}`,
+          `${t(language, 'detail_task')}: ${task.name}`,
+          `${t(language, 'description')}: ${task.description || '—'}`,
+          `${t(language, 'detail_command')}: ${task.command || '—'}`,
           '',
-          t(language, 'Enter: run task'),
+          t(language, 'detail_tasks_hint'),
         ]
       }
       else {
@@ -249,14 +253,13 @@ function detailContent(s) {
     }
     case 'Environment':
     case 'System': {
-      const filteredCommands = commands.filter(cmd => pageCommandsMatch(cmd, page, search))
-      const cmd = filteredCommands[selected]
+      const cmd = items[selected]
       if (cmd) {
         lines = [
-          `${t(language, 'Command')}: mise ${cmd.name}`,
-          `${t(language, 'Description')}: ${cmd.description}`,
+          `${t(language, 'detail_command')}: mise ${cmd.name}`,
+          `${t(language, 'description')}: ${cmd.description}`,
           '',
-          t(language, 'Enter: open command builder'),
+          t(language, 'detail_environment_hint'),
         ]
       }
       else {
@@ -265,11 +268,12 @@ function detailContent(s) {
       break
     }
     case 'Config': {
-      const filteredConfigs = snapshot.configs.filter(c => matches(c.path, c.tools.join(' '), search))
-      const config = filteredConfigs[selected]
+      const config = items[selected]
       if (config) {
         lines = [
           `${t(language, 'Path')}: ${config.path}`,
+          s.configTarget?.path === config.path ? t(language, 'config_target_selected', { path: config.path }) : '',
+          supportsConfigTarget(config.path) ? '' : t(language, 'config_target_unsupported'),
           '',
           t(language, 'Tools in config:'),
           ...config.tools.map(t => `  • ${t}`),
@@ -284,16 +288,15 @@ function detailContent(s) {
     }
     case 'Preferences': {
       lines = [
-        t(language, 'Current language: {language}', { language: language === 'zh' ? '中文' : 'English' }),
+        t(language, 'current_language', { lang: LANGUAGES.find(item => item.id === language)?.name || language }),
         '',
-        t(language, 'Enter: toggle language'),
-        t(language, 'Changes persist automatically'),
+        t(language, 'apply_selected_language'),
+        t(language, 'changes_persist'),
       ]
       break
     }
     case 'Console': {
-      const tasks = s.consoleTasks || []
-      const task = tasks[selected]
+      const task = items[selected]
       if (task) {
         const statusText = {
           pending: t(language, 'console_pending'),
@@ -317,8 +320,7 @@ function detailContent(s) {
       break
     }
     case 'Logs': {
-      const filteredLogs = [...logs].reverse().filter(l => matches(l.command, l.output, search))
-      const log = filteredLogs[selected]
+      const log = items[selected]
       if (log) {
         lines = [
           `${t(language, 'Command')}: ${log.command}`,
@@ -339,17 +341,23 @@ function detailContent(s) {
 
 function pageActionsHint(s) {
   const lang = s.language
+  if (s.overlay)
+    return overlayHint(s.overlay, lang)
+  if (s.focus === FOCUS.Navigation)
+    return t(lang, 'navigation_hint')
+  if (s.focus === FOCUS.Details)
+    return t(lang, 'details_hint')
   switch (s.page) {
-    case 'Dashboard': return t(lang, 'r refresh  a add tool')
-    case 'Tools': return t(lang, 'a add  v use  i install  d delete  r refresh  p/G scope')
-    case 'Updates': return t(lang, 'Space select  U upgrade  r refresh')
-    case 'Tasks': return t(lang, 'Enter run  r refresh')
-    case 'Environment': return t(lang, 'Enter open  r refresh')
-    case 'Config': return t(lang, 'e edit  y copy  r refresh')
-    case 'Console': return t(lang, 'j/k select  d dismiss done')
-    case 'System': return t(lang, 'Enter open  r refresh')
-    case 'Preferences': return t(lang, 'Enter toggle')
-    case 'Logs': return t(lang, 'j/k scroll  / search')
+    case 'Dashboard': return t(lang, 'dashboard_hint')
+    case 'Tools': return t(lang, 'tools_hint')
+    case 'Updates': return t(lang, 'updates_hint')
+    case 'Tasks': return t(lang, 'tasks_hint')
+    case 'Environment': return t(lang, 'environment_hint')
+    case 'Config': return t(lang, 'config_hint')
+    case 'Console': return t(lang, 'console_hint')
+    case 'System': return t(lang, 'system_hint')
+    case 'Preferences': return t(lang, 'preferences_hint')
+    case 'Logs': return t(lang, 'logs_hint')
     default: return ''
   }
 }
@@ -450,9 +458,10 @@ export function createView(renderer) {
   }
 
   return (s, app) => {
-    s.width = renderer.width
-    s.height = renderer.height
-    const { width, height, language } = s
+    const { width, height } = renderer
+    const { language } = s
+    const items = app.visibleItems()
+    let detailMaxScroll = 0
     const mode = layoutMode(width, height)
 
     // Hide all nodes first
@@ -463,28 +472,33 @@ export function createView(renderer) {
       showNode(nodes, 'header', 0, 0, width, 1, [t(language, 'Terminal too small')], COLORS.warning)
       showNode(nodes, 'keys', 0, height - 1, width, 1, [t(language, 'Resize, or q/Ctrl-c to quit')], COLORS.muted)
       renderer.requestRender()
-      return
+      return { width, height, detailMaxScroll }
     }
 
     // Header bar
-    const headerLine = `  LAZYMISE   ${clipColumns(`[${s.scope === 'Global' ? 'GLOBAL' : 'PROJECT'}]`, 12)}   mise ${s.snapshot.mise_version}`
+    const prefix = ` LAZYMISE  ${t(language, 'config_target_header')} `
+    const suffix = `  ${t(language, 'config_target_select_hint')} `
+    const target = s.configTarget ? displayPath(s.configTarget.path) : t(language, 'config_target_none')
+    const headerLine = `${prefix}${clipPath(target, width - stringWidth(prefix + suffix))}${suffix}`
     showNode(nodes, 'header', 0, 0, width, 1, [padColumns(headerLine, width)], COLORS.text, COLORS.selection)
 
     if (mode === 'dual') {
-      const navWidth = Math.floor(width * 0.2)
-      const listWidth = Math.floor(width * 0.32)
+      const navWidth = Math.floor((width - 2) / 5)
+      const listWidth = Math.floor((width - navWidth - 2) / 2)
       const detailLeft = navWidth + listWidth + 2
       const detailWidth = width - detailLeft
       const panelHeight = height - 3
       const detailHeight = panelHeight
 
-      const navResult = panel('nav', 1, 1, navWidth, panelHeight, navContent(s), s)
+      const navResult = panel('nav', 1, 1, navWidth, panelHeight, navContent(s, panelHeight - 2), s)
       renderBox(nodes, 'nav', navResult)
 
-      const listResult = panel('list', navWidth + 1, 1, listWidth, panelHeight, listContent(s), s)
+      const listResult = panel('list', navWidth + 1, 1, listWidth, panelHeight, listContent(s, items, panelHeight - 2, listWidth - 3), s)
       renderBox(nodes, 'list', listResult)
 
-      const detailResult = panel('detail', detailLeft, 1, detailWidth, detailHeight, detailContent(s), s)
+      const detail = detailViewport(s, items, detailWidth - 3, detailHeight - 2)
+      detailMaxScroll = detail.maxScroll
+      const detailResult = panel('detail', detailLeft, 1, detailWidth, detailHeight, detail, s)
       renderBox(nodes, 'detail', detailResult)
     }
     else {
@@ -495,16 +509,16 @@ export function createView(renderer) {
       const focusedPane = s.focus
       const topId = focusedPane === FOCUS.Navigation ? 'nav' : 'list'
       const bottomId = focusedPane === FOCUS.Details ? 'detail' : (topId === 'nav' ? 'list' : 'nav')
-      const allContent = {
-        nav: navContent(s),
-        list: listContent(s),
-        detail: detailContent(s),
-      }
+      const detail = detailViewport(s, items, width - 5, bottomHeight - 2)
+      detailMaxScroll = detail.maxScroll
+      const contentFor = (id, capacity) => id === 'nav'
+        ? navContent(s, capacity)
+        : id === 'list' ? listContent(s, items, capacity, width - 5) : detail
 
-      const topResult = panel(topId, 1, 1, width - 2, topHeight, allContent[topId], s)
+      const topResult = panel(topId, 1, 1, width - 2, topHeight, contentFor(topId, topHeight - 2), s)
       renderBox(nodes, topId, topResult)
 
-      const bottomResult = panel(bottomId, 1, 1 + topHeight, width - 2, bottomHeight, allContent[bottomId], s)
+      const bottomResult = panel(bottomId, 1, 1 + topHeight, width - 2, bottomHeight, contentFor(bottomId, bottomHeight - 2), s)
       renderBox(nodes, bottomId, bottomResult)
     }
 
@@ -512,172 +526,282 @@ export function createView(renderer) {
     showNode(nodes, 'status', 0, height - 2, width, 1, [clipColumns(renderStatus(s, app), width)], s.loading ? COLORS.warning : COLORS.muted)
 
     // Key hints
-    const hintsStr = `${s.page}: ${pageActionsHint(s)}`
+    const hintsStr = `${t(language, s.page)}: ${pageActionsHint(s)}`
     showNode(nodes, 'keys', 0, height - 1, width, 1, [clipColumns(hintsStr, width)], COLORS.muted)
 
     // Overlay rendering
-    if (s.overlay) {
-      renderOverlay(nodes, s.overlay, width, height, s.language, s.search)
-    }
+    const overlayMaxScroll = s.overlay ? renderOverlay(nodes, s, app, width, height) : null
 
     renderer.requestRender()
+    return { width, height, detailMaxScroll, overlayMaxScroll }
   }
 }
 
 function renderStatus(s) {
   if (s.loading)
-    return t(s.language, 'Loading...')
+    return t(s.language, 'loading')
   const active = (s.consoleTasks || []).filter(t => t.status === 'pending' || t.status === 'running')
-  const prefix = active.length ? `[${active.length} running] ` : ''
+  const prefix = active.length ? `${t(s.language, 'status_running_count', { count: active.length })} ` : ''
   if (s.status)
     return prefix + s.status
-  return prefix + t(s.language, 'Ready')
+  return prefix + t(s.language, 'status_ready')
 }
 
-function renderOverlay(nodes, overlay, width, height, language, searchText) {
-  const modalWidth = Math.min(width - 8, 80)
-  const modalHeight = Math.min(height - 6, 20)
-  const left = Math.floor((width - modalWidth) / 2)
-  const top = Math.max(2, Math.floor((height - modalHeight) / 2))
+function inputLine(label, value, width) {
+  const prefix = clipColumns(label, Math.floor(width / 2))
+  const budget = Math.max(0, width - stringWidth(prefix) - 1)
+  const graphemes = [...segmenter.segment(value)]
+  let tail = ''
+  let columns = 0
+  for (let index = graphemes.length - 1; index >= 0; index--) {
+    const segment = graphemes[index].segment
+    const size = stringWidth(segment)
+    if (columns + size > budget)
+      break
+    tail = segment + tail
+    columns += size
+  }
+  return `${prefix}${tail}█`
+}
 
+function itemLine(name, description, width) {
+  const nameWidth = Math.min(25, Math.floor((width - 2) / 2))
+  return `${padColumns(name, nameWidth)}  ${clipColumns(description, width - nameWidth - 2)}`
+}
+
+function displayPath(path) {
+  const local = relative(process.cwd(), path)
+  return local && local !== '..' && !local.startsWith('../') ? `./${local}` : path
+}
+
+function clipPath(path, width) {
+  if (stringWidth(path) <= width)
+    return path
+  if (width <= 1)
+    return width === 1 ? '…' : ''
+  const segments = [...segmenter.segment(path)]
+  let tail = ''
+  let columns = 1
+  for (let index = segments.length - 1; index >= 0; index--) {
+    const segment = segments[index].segment
+    const size = stringWidth(segment)
+    if (columns + size > width)
+      break
+    tail = segment + tail
+    columns += size
+  }
+  return `…${tail}`
+}
+
+function targetHint(s) {
+  return t(s.language, 'config_target_selected', {
+    path: s.configTarget?.path || t(s.language, 'config_target_none'),
+  })
+}
+
+function detailViewport(s, items, width, height) {
+  const content = detailContent(s, items)
+  const lines = content.lines.flatMap(line => wrap(line, width))
+  const capacity = Math.max(0, height)
+  const maxScroll = items.length || s.page === 'Dashboard' ? Math.max(0, lines.length - capacity) : 0
+  const scroll = Math.max(0, Math.min(s.detailScroll, maxScroll))
+  return {
+    title: content.title,
+    lines: lines.slice(scroll, scroll + capacity),
+    counter: `${lines.length ? scroll + 1 : 0}–${Math.min(lines.length, scroll + capacity)}/${lines.length}`,
+    maxScroll,
+  }
+}
+
+function overlayHint(overlay, language) {
+  if (overlay.type === 'ConfirmCommand' || overlay.type === 'ConfirmDelete')
+    return t(language, 'confirm_prompt')
+  if (overlay.type === 'Search' || overlay.searching)
+    return t(language, 'text_search_hint')
+  if (overlay.type === 'ConfigTarget')
+    return t(language, overlay.mode === 'path' ? 'config_target_path_hint' : 'config_target_list_hint')
+  if (overlay.type === 'CustomTool')
+    return t(language, 'custom_tool_hint')
+  if (overlay.type === 'CommandBuilder')
+    return t(language, overlay.mode === 'help' ? 'builder_help_hint' : 'builder_input_hint')
+  if (overlay.type === 'CommandPalette')
+    return t(language, 'palette_hint')
+  if (overlay.type === 'Help')
+    return t(language, 'help_scroll_hint')
+  if (overlay.loading)
+    return t(language, 'loading_hint')
+  if (overlay.type === 'Picker') {
+    if (overlay.level === 'registry')
+      return t(language, 'registry_hint')
+    return t(language, overlay.intent === 'Install' ? 'install_hint' : 'picker_hint')
+  }
+  return ''
+}
+
+function scrollContent(lines, scroll, capacity) {
+  const start = Math.max(0, Math.min(scroll || 0, Math.max(0, lines.length - capacity)))
+  return {
+    lines: lines.slice(start, start + capacity),
+    counter: `${lines.length ? start + 1 : 0}–${Math.min(lines.length, start + capacity)}/${lines.length}`,
+    maxScroll: Math.max(0, lines.length - capacity),
+  }
+}
+
+function renderOverlay(nodes, s, app, width, height) {
+  const { overlay, language } = s
+  const modalWidth = Math.min(width - 8, 80)
+  const modalHeight = height - 4
+  const contentWidth = modalWidth - 4
+  const capacity = Math.max(0, modalHeight - 3)
   let title = ''
   let lines = []
   let selected = -1
+  let counter = ''
+  let maxScroll = null
 
   switch (overlay.type) {
     case 'Help': {
-      title = 'LAZYMISE — mise TUI'
-      lines = [
-        '',
-        '1-8/g/u/t/E/c/s/o/x: page jump',
-        'j/k/↑/↓: move  h/l/←/→: switch focus',
-        'Tab: cycle focus  Esc: back to navigation',
-        '',
-        'a: add tool  A: custom tool  v: use version',
-        'i: install  d: delete  Space: select update',
-        'U: upgrade  Enter: run/open  e: edit config',
-        'r: refresh  p/G: scope  /: search',
-        ':: command palette  m: page commands',
-        '?: help  q/Ctrl-c: quit',
-      ]
+      title = t(language, 'help_title_full')
+      const keys = ['help_page_jump', 'help_move', 'help_tab_esc', 'help_tools_line', 'help_updates_line', 'help_global_line', 'help_config_line', 'text_search_hint']
+      const content = scrollContent(keys.flatMap(key => wrap(t(language, key), contentWidth)), overlay.scroll, capacity)
+      lines = content.lines
+      counter = content.counter
+      maxScroll = content.maxScroll
       break
     }
-    case 'Search': {
-      title = 'Search'
-      lines = [`Search: ${searchText || ''}█`]
+    case 'Search':
+      title = t(language, 'search_title')
+      lines = [inputLine(t(language, 'search_prompt', { query: '' }), s.search, contentWidth)]
+      break
+    case 'ConfigTarget': {
+      title = t(language, 'config_target_title')
+      if (overlay.mode === 'path') {
+        const content = scrollContent([
+          ...(overlay.error ? wrap(overlay.error, contentWidth) : []),
+          ...wrap(overlay.input, contentWidth),
+        ], overlay.scroll, capacity - 1)
+        lines = [inputLine(t(language, 'config_target_path'), overlay.input, contentWidth), ...content.lines]
+        maxScroll = content.maxScroll
+        counter = content.maxScroll ? `PgUp/PgDn ${content.counter}` : ''
+        break
+      }
+      const items = app.configTargetItems(overlay)
+      const current = items[overlay.selected]
+      const context = [
+        ...(overlay.error ? wrap(overlay.error, contentWidth) : []),
+        ...(current?.supported === false ? [t(language, 'config_target_unsupported')] : []),
+        ...(current?.path ? wrap(current.path, contentWidth) : []),
+      ]
+      const pathContent = scrollContent(context, overlay.scroll, Math.max(1, capacity - 4))
+      const visibleHeader = [inputLine(t(language, 'search_prompt', { query: '' }), overlay.search, contentWidth), ...pathContent.lines]
+      maxScroll = pathContent.maxScroll
+      const entries = items.map((item) => {
+        if (item.kind === 'path')
+          return t(language, 'config_target_input')
+        if (item.kind === 'project')
+          return t(language, 'config_target_project')
+        const marker = item.path === s.configTarget?.path ? '●' : '○'
+        const unsupported = item.supported ? '' : ` [${t(language, 'config_target_unsupported')}]`
+        return `${marker} ${clipPath(displayPath(item.path), contentWidth - 2 - stringWidth(unsupported))}${unsupported}`
+      })
+      const content = windowContent(entries, overlay.selected, capacity - visibleHeader.length)
+      lines = [...visibleHeader, ...content.lines]
+      selected = content.selected < 0 ? -1 : visibleHeader.length + content.selected
+      counter = pathContent.maxScroll ? `PgUp/PgDn ${pathContent.counter}  ${content.counter}` : content.counter
       break
     }
     case 'Picker': {
-      title = renderPickerTitle(overlay, language)
-      lines = renderPickerLines(overlay, language)
-      selected = overlay.selected || 0
+      title = t(language, { registry: 'picker_registry', backends: 'picker_backends', versions: 'picker_versions' }[overlay.level])
+      ;({ lines, selected, counter, maxScroll } = renderPickerContent(overlay, s, contentWidth, capacity))
       break
     }
     case 'CommandPalette': {
-      const query = overlay.search || ''
-      title = query ? `Command Palette ─ ${query}` : 'Command Palette'
-      const filterItems = overlay.commands || overlay.items || []
-      const visible = filterItems.filter(i => matches(i.name, i.description, query))
-      const content = windowContent(
-        visible.map(i => `${clipColumns(i.name, 25)}  ${clipColumns(i.description, 40)}`),
-        overlay.selected || 0,
-        modalHeight - 3,
-      )
-      lines = content.lines
-      selected = content.selected
-      if (!visible.length)
-        lines = ['No matching commands']
+      title = t(language, overlay.context ? 'command_context' : 'command_palette')
+      const query = inputLine(t(language, 'search_prompt', { query: '' }), overlay.search || '', contentWidth)
+      const items = filterCommands(overlay.commands || [], overlay.search)
+      const content = windowContent(items.map(item => itemLine(item.name, item.description, contentWidth)), overlay.selected, Math.max(0, capacity - 1))
+      lines = [query, ...(items.length ? content.lines : [t(language, 'no_matching_commands')])]
+      selected = content.selected < 0 ? -1 : content.selected + 1
+      counter = content.counter
       break
     }
     case 'CommandBuilder': {
-      const cmdName = overlay.command || ''
-      title = `mise ${cmdName}`
-      const argsLine = `Arguments: ${overlay.args || ''}█`
-      const helpLines = (overlay.help || '').split('\n')
-      const helpContent = windowContent(helpLines, overlay.scroll || 0, modalHeight - 4)
-      lines = [argsLine, '', ...helpContent.lines]
-      selected = overlay.mode === 'help' ? helpContent.selected + 1 : 0
+      title = t(language, 'command_builder', { command: `mise ${overlay.command?.name || ''}` })
+      const help = overlay.loading ? t(language, 'loading') : overlay.error || overlay.help || ''
+      const helpContent = scrollContent(wrap(help, contentWidth), overlay.scroll, Math.max(0, capacity - 1))
+      lines = [inputLine(t(language, 'command_builder_args', { args: '' }), overlay.args || '', contentWidth), ...helpContent.lines]
+      selected = overlay.mode === 'input'
+        ? 0
+        : helpContent.lines.length ? (overlay.scroll >= helpContent.maxScroll && helpContent.maxScroll > 0 ? lines.length - 1 : 1) : -1
+      counter = helpContent.counter
+      maxScroll = helpContent.maxScroll
       break
     }
     case 'CustomTool': {
-      title = 'Custom tool'
-      const scope = overlay.scope || 'Project'
-      lines = [
-        'Input backend identifier:',
-        `${overlay.input || ''}█`,
-        '',
-        `[${scope === 'Global' ? 'GLOBAL' : 'PROJECT'}]  Tab: toggle scope`,
-      ]
+      title = t(language, 'custom_tool')
+      const content = scrollContent([
+        ...(overlay.error ? wrap(overlay.error, contentWidth) : []),
+        ...wrap(targetHint(s), contentWidth),
+      ], overlay.scroll, capacity - 1)
+      lines = [inputLine(t(language, 'custom_tool_prompt'), overlay.input || '', contentWidth), ...content.lines]
+      maxScroll = content.maxScroll
+      counter = content.maxScroll ? `PgUp/PgDn ${content.counter}` : ''
       break
     }
-    case 'ConfirmDelete': {
-      title = 'Confirm delete'
-      lines = [
-        overlay.message || `Delete ${overlay.name || ''}?`,
-        '',
-        'Enter/y: confirm  Esc/n: cancel',
-      ]
-      break
-    }
+    case 'ConfirmDelete':
     case 'ConfirmCommand': {
-      title = 'Confirm'
-      lines = [
-        overlay.message || `mise ${(overlay.args || []).join(' ')}`,
-        '',
-        'Enter/y: confirm  Esc/n: cancel',
-      ]
+      title = t(language, overlay.type === 'ConfirmDelete' ? 'confirm_delete_title' : 'confirm_command_title')
+      const content = scrollContent(wrap(overlay.message || '', contentWidth), overlay.scroll, capacity)
+      lines = content.lines
+      counter = content.counter
+      maxScroll = content.maxScroll
       break
     }
   }
 
-  const boxResult = box('modal', left, top, modalWidth, Math.min(modalHeight, lines.length + 2), { title, lines, selected }, COLORS.focus)
-  renderBox(nodes, 'modal', boxResult)
+  lines = lines.slice(0, capacity).map(line => clipColumns(line, contentWidth))
+  // Hints remain on the bottom row even while long content scrolls above them.
+  lines.push(clipColumns(overlayHint(overlay, language), contentWidth))
+  const left = Math.floor((width - modalWidth) / 2)
+  const renderedHeight = lines.length + 2
+  const top = Math.floor((height - renderedHeight) / 2)
+  renderBox(nodes, 'modal', box('modal', left, top, modalWidth, renderedHeight, { title, lines, selected, counter }, COLORS.focus))
+  return maxScroll
 }
 
-function renderPickerTitle(overlay, _language) {
-  switch (overlay.level) {
-    case 'registry': return 'Registry'
-    case 'backends': return 'Select backend'
-    case 'versions': return 'Select version'
-    default: return ''
-  }
-}
-
-function renderPickerLines(overlay, _language) {
+function renderPickerContent(overlay, s, contentWidth, capacity) {
+  const { language } = s
+  let entries = []
+  let emptyKey = 'no_results'
+  const header = wrap(overlay.intent === 'Install' ? t(language, 'install_only_hint') : targetHint(s), contentWidth)
   switch (overlay.level) {
     case 'registry': {
-      const items = overlay.tools || []
-      const backends = overlay.backends || ['All']
-      const filterIdx = overlay.filterIdx || 0
-      const filterLabel = backends[filterIdx] || 'All'
-      const query = overlay.search || ''
-      const filtered = items.filter(i => matches(i.name, i.description, query))
-      const header = [
-        `[${filterLabel}] Search: ${query}${overlay.searching ? '█' : ''}`,
-        '',
-      ]
-      const content = windowContent(
-        filtered.map(i => `${clipColumns(i.name, 25)}  ${clipColumns(i.description, 35)}`),
-        overlay.selected || 0,
-        15,
-      )
-      return [...header, ...content.lines]
+      const filter = overlay.backends?.[overlay.filterIdx || 0] || 'All'
+      header.push(t(language, 'picker_filter_label', { filter: filter === 'All' ? t(language, 'all_backends') : filter, query: `${overlay.search || ''}${overlay.searching ? '█' : ''}` }))
+      entries = filterRegistryTools(overlay).map(item => itemLine(item.name, item.description, contentWidth))
+      break
     }
-    case 'backends': {
-      const backends = overlay.backendList || []
-      const content = windowContent(backends, overlay.backendSelected || 0, 15)
-      return content.lines
-    }
-    case 'versions': {
-      const versions = overlay.versions || []
-      const content = windowContent(
-        versions.map(v => `${clipColumns(v.version, 16)}  ${clipColumns(v.created_at || '', 20)}`),
-        overlay.selected || 0,
-        15,
-      )
-      return content.lines
-    }
-    default:
-      return []
+    case 'backends':
+      entries = overlay.backendList || []
+      emptyKey = 'no_backends'
+      break
+    case 'versions':
+      header.push(clipPath(overlay.toolSpecName || '', contentWidth))
+      entries = (overlay.versions || []).map(item => itemLine(item.version, item.created_at || '', contentWidth))
+      emptyKey = 'no_versions'
+      break
+  }
+  if (overlay.loading)
+    header.push(t(language, overlay.level === 'registry' ? 'loading_registry' : 'loading_versions'))
+  if (overlay.error)
+    header.unshift(...wrap(overlay.error, contentWidth))
+  const context = scrollContent(header, overlay.scroll, Math.max(0, capacity - 1))
+  const visibleHeader = context.lines
+  const content = windowContent(entries, Math.max(0, Math.min(overlay.selected || 0, entries.length - 1)), capacity - visibleHeader.length)
+  return {
+    lines: [...visibleHeader, ...(entries.length ? content.lines : [t(language, emptyKey)])],
+    selected: content.selected < 0 ? -1 : content.selected + visibleHeader.length,
+    counter: context.maxScroll ? `PgUp/PgDn ${context.counter}  ${content.counter}` : content.counter,
+    maxScroll: context.maxScroll,
   }
 }
