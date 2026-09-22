@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import process from 'node:process'
+import packageJson from '../package.json' with { type: 'json' }
 import { loadSnapshot, registry } from './mise.js'
 
 const HELP = `lazymise — mise TUI manager
@@ -24,10 +25,8 @@ Commands:
   update          Self-update lazymise
 
   --help, -h      Show this help message
-  --version       Show lazymise version
+  --version, -v   Show lazymise version
 `
-
-const VERSION = '0.1.1'
 
 /** Handle CLI arguments. Returns null to launch TUI, or an exit code. */
 export async function runCli(args) {
@@ -41,8 +40,8 @@ export async function runCli(args) {
     return 0
   }
 
-  if (command === '--version') {
-    process.stdout.write(`lazymise ${VERSION}\n`)
+  if (command === '--version' || command === '-v') {
+    process.stdout.write(`lazymise ${packageJson.version}\n`)
     return 0
   }
 
@@ -57,15 +56,21 @@ export async function runCli(args) {
       case 'registry':
         return await cmdRegistry(args.slice(1))
       case 'install':
-        return args[1] ? await passthrough(['install', '--yes', ...args.slice(1)]) : usage('install <spec>')
+        return args[1]
+          ? await passthrough(['install', '--yes', ...args.slice(1)])
+          : usage('install <spec>')
       case 'uninstall':
-        return args[1] ? await passthrough(['uninstall', '--yes', ...args.slice(1)]) : usage('uninstall <spec>')
+        return args[1]
+          ? await passthrough(['uninstall', '--yes', ...args.slice(1)])
+          : usage('uninstall <spec>')
       case 'upgrade':
         return await passthrough(['upgrade', '--yes', ...args.slice(1)])
       case 'run':
         return args[1] ? await passthrough(['run', ...args.slice(1)]) : usage('run <task>')
       case 'use':
-        return args[1] ? await passthrough(['use', '--yes', ...args.slice(1)]) : usage('use <spec>')
+        return args[1]
+          ? await passthrough(['use', '--yes', ...args.slice(1)])
+          : usage('use <spec>')
       case 'tasks':
         return await passthrough(['tasks'])
       case 'help':
@@ -99,7 +104,9 @@ async function cmdList(_args) {
     for (const tool of snapshot.tools) {
       const marker = tool.active ? '●' : '○'
       const source = tool.source || ''
-      process.stdout.write(`${marker} ${tool.name.padEnd(24)} ${tool.version.padEnd(12)} ${source}\n`)
+      process.stdout.write(
+        `${marker} ${tool.name.padEnd(24)} ${tool.version.padEnd(12)} ${source}\n`,
+      )
     }
     return 0
   }
@@ -115,7 +122,11 @@ async function cmdRegistry(args) {
     const tools = await registry()
     const search = query ? query.toLowerCase() : ''
     for (const tool of tools) {
-      if (!search || tool.name.toLowerCase().includes(search) || tool.description.toLowerCase().includes(search)) {
+      if (
+        !search
+        || tool.name.toLowerCase().includes(search)
+        || tool.description.toLowerCase().includes(search)
+      ) {
         const backends = tool.backends.length ? `[${tool.backends.join(', ')}]` : ''
         process.stdout.write(`${tool.name.padEnd(24)} ${backends} ${tool.description}\n`)
       }
