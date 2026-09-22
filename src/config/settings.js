@@ -28,7 +28,6 @@ export function loadSettings() {
 
 export function saveSettings(settings) {
   const dir = settingsDir()
-  try { mkdirSync(dir, { recursive: true }) }
-  catch { /* ok */ }
+  mkdirSync(dir, { recursive: true })
   writeFileSync(settingsPath(), JSON.stringify({ language: settings.language || 'en' }, null, 2))
 }
