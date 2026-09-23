@@ -29,14 +29,22 @@ jobs:
             target: bun-linux-x64
             asset: linux-x86_64
             archive: tar.gz
+          - os: ubuntu-22.04-arm
+            target: bun-linux-arm64
+            asset: linux-aarch64
+            archive: tar.gz
           - os: macos-15
             target: bun-darwin-arm64
             asset: macos-aarch64
             archive: tar.gz
-          # - os: windows-latest
-          #   target: bun-windows-x64
-          #   asset: windows-x86_64
-          #   archive: zip
+          - os: macos-15-intel
+            target: bun-darwin-x64
+            asset: macos-x86_64
+            archive: tar.gz
+          - os: windows-latest
+            target: bun-windows-x64
+            asset: windows-x86_64
+            archive: zip
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -57,7 +65,7 @@ jobs:
         run: bun run lint
 
       - name: Build standalone binary
-        run: bun build --compile --target=${{ matrix.target }} src/main.js --outfile lazymise
+        run: bun build --compile --target=${{ matrix.target }} src/main.js --outfile lazymise${{ runner.os == 'Windows' && '.exe' || '' }}
 
       - name: Package Unix binary
         if: runner.os != 'Windows'
