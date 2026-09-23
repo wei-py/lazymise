@@ -246,6 +246,7 @@ const EN = {
   'Terminal too small': 'Terminal too small',
   'Resize, or q/Ctrl-c to quit': 'Resize, or q/Ctrl-c to quit',
   'Status': 'Status',
+  'Working': 'Working',
   'Path': 'Path',
   'Tools in config:': 'Tools in config:',
   '(inactive)': '(inactive)',
@@ -496,6 +497,7 @@ const ZH = {
   'Terminal too small': '终端窗口太小',
   'Resize, or q/Ctrl-c to quit': '调整窗口大小，或按 q/Ctrl-c 退出',
   'Status': '状态',
+  'Working': '处理中',
   'Path': '路径',
   'Tools in config:': '配置中的工具：',
   '(inactive)': '(非活跃)',
@@ -529,9 +531,7 @@ export function hintSegments(language, key) {
 
 /** Render segments back to the exact prose line `t()` produces for them. */
 export function hintLine(segments) {
-  return segments
-    .map(({ key, desc }) => (desc ? `${key} ${desc}` : key))
-    .join('  ·  ')
+  return segments.map(({ key, desc }) => (desc ? `${key} ${desc}` : key)).join('  ·  ')
 }
 
 export function t(language, key, params) {

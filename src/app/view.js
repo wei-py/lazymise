@@ -6,14 +6,23 @@ import { COLORS, setTheme } from './view/colors.js'
 import { pageActionsHint } from './view/hints.js'
 import { renderOverlay } from './view/overlay.js'
 import { detailViewport, listContent, navContent } from './view/panels.js'
-import { clipPath, displayPath, padColumns, panel, renderBox, showNode } from './view/primitives.js'
+import {
+  box,
+  clipPath,
+  displayPath,
+  padColumns,
+  panel,
+  renderBox,
+  showNode,
+  wrap,
+} from './view/primitives.js'
 
 const PANEL_IDS = ['nav', 'list', 'detail']
 const NODE_IDS = [
   'header',
   'headerInner',
   ...PANEL_IDS.flatMap(id => [`${id}Frame`, `${id}Inner`, `${id}Selection`]),
-  'status',
+  'statusFrame',
   'statusInner',
   'keys',
   'modalFrame',
@@ -101,7 +110,7 @@ export function createView(renderer) {
       const listWidth = Math.floor((width - navWidth - 2) / 2)
       const detailLeft = navWidth + listWidth + 2
       const detailWidth = width - detailLeft
-      const panelHeight = height - 3
+      const panelHeight = height - 6
       const detailHeight = panelHeight
 
       const navResult = panel(
@@ -133,8 +142,8 @@ export function createView(renderer) {
     }
     else {
       // Single mode: stacked layout
-      const topHeight = Math.floor((height - 3) * 0.55)
-      const bottomHeight = height - 3 - topHeight
+      const topHeight = Math.floor((height - 6) * 0.55)
+      const bottomHeight = height - 6 - topHeight
 
       const focusedPane = s.focus
       const topId = focusedPane === FOCUS.Navigation ? 'nav' : 'list'
@@ -171,16 +180,24 @@ export function createView(renderer) {
       renderBox(nodes, bottomId, bottomResult)
     }
 
-    // Status bar
-    showNode(
+    // Status: bordered box above the key hints (lazyapp-style footer).
+    const status = renderStatus(s)
+    renderBox(
       nodes,
       'status',
-      0,
-      height - 2,
-      width,
-      1,
-      [clipColumns(renderStatus(s, app), width)],
-      s.loading ? COLORS.warning : COLORS.muted,
+      box(
+        'status',
+        0,
+        height - 5,
+        width,
+        4,
+        {
+          title: t(language, status.busy ? 'Working' : 'Status'),
+          lines: wrap(status.text, width - 3),
+        },
+        COLORS.border,
+        status.busy ? COLORS.warning : COLORS.muted,
+      ),
     )
 
     // Key hints: prefix + colored chips (`key · desc`), clipped at the right edge.
@@ -225,14 +242,15 @@ export function createView(renderer) {
 
 function renderStatus(s) {
   if (s.loading)
-    return t(s.language, 'loading')
+    return { text: t(s.language, 'loading'), busy: true }
   const active = (s.consoleTasks || []).filter(
     t => t.status === 'pending' || t.status === 'running',
   )
   const prefix = active.length
     ? `${t(s.language, 'status_running_count', { count: active.length })} `
     : ''
-  if (s.status)
-    return prefix + s.status
-  return prefix + t(s.language, 'status_ready')
+  return {
+    text: prefix + (s.status || t(s.language, 'status_ready')),
+    busy: active.length > 0,
+  }
 }
