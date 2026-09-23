@@ -1,0 +1,325 @@
+import stringWidth from 'string-width'
+import { t } from '../../config/i18n.js'
+import { themeName } from '../../config/themes.js'
+import { clipColumns, PAGE_ORDER, preferenceItems, supportsConfigTarget } from '../state.js'
+import { clipPath, displayPath, padColumns, windowContent, wrap } from './primitives.js'
+
+/** Sidebar: page navigation. */
+export function navContent(s, capacity) {
+  const shortcuts = {
+    Dashboard: '1',
+    Tools: '2',
+    Updates: '3',
+    Tasks: '4',
+    Environment: '5',
+    Config: '6',
+    System: '7',
+    Preferences: '8',
+    Console: '9',
+    Logs: '0',
+  }
+  const entries = PAGE_ORDER.map(
+    page => `${page === s.page ? '▸' : ' '} ${shortcuts[page]} ${pageName(page, s.language)}`,
+  )
+  return {
+    title: t(s.language, 'Sections'),
+    ...windowContent(entries, PAGE_ORDER.indexOf(s.page), capacity),
+  }
+}
+
+export function pageName(page, language) {
+  return t(language, page)
+}
+
+/** Content list: varies by page. */
+export function listContent(s, items, capacity, width) {
+  const { page, snapshot, search, selected, language } = s
+  let title = ''
+  let renderItem = null
+
+  switch (page) {
+    case 'Dashboard': {
+      const stats = [
+        t(language, 'dashboard_tools_count', { count: snapshot.tools.length }),
+        t(language, 'dashboard_updates_count', {
+          count: snapshot.updates.filter(u => u.latest !== u.current).length,
+        }),
+        t(language, 'dashboard_tasks_count', { count: snapshot.tasks.length }),
+        t(language, 'dashboard_configs_count', { count: snapshot.configs.length }),
+        '',
+        t(language, 'dashboard_version', { version: snapshot.mise_version }),
+      ]
+      return { title: t(language, 'dashboard_title'), lines: stats, selected: -1, counter: '' }
+    }
+    case 'Tools': {
+      title = t(language, 'Tools')
+      renderItem = (tool) => {
+        const suffix = `${clipColumns(tool.version, 12)}${!tool.active ? ` ${t(language, '(inactive)')}` : ''}`
+        const nameWidth = Math.max(1, width - stringWidth(suffix) - 4)
+        return `${tool.installed ? '●' : '○'} ${padColumns(tool.name, nameWidth)}  ${suffix}`
+      }
+      break
+    }
+    case 'Updates': {
+      title = t(language, 'Updates')
+      renderItem = u =>
+        `${s.selectedUpdates.has(u.name) ? '[x]' : '[ ]'} ${clipColumns(u.name, 20)}  ${clipColumns(u.current, 10)} → ${clipColumns(u.latest, 10)}`
+      break
+    }
+    case 'Tasks': {
+      title = t(language, 'Tasks')
+      renderItem = t => `▶ ${clipColumns(t.name, 30)}`
+      break
+    }
+    case 'Environment':
+    case 'System': {
+      title = t(language, page)
+      renderItem = cmd => `${clipColumns(cmd.name, 20)}  ${clipColumns(cmd.description, 30)}`
+      break
+    }
+    case 'Config': {
+      title = t(language, 'Config')
+      renderItem = c =>
+        `${s.configTarget?.path === c.path ? '●' : '○'} ${clipPath(displayPath(c.path), width - 2)}${supportsConfigTarget(c.path) ? '' : ` [${t(language, 'config_target_unsupported')}]`}`
+      break
+    }
+    case 'Preferences': {
+      return {
+        title: t(language, 'preferences_title'),
+        ...windowContent(
+          items.map(
+            item =>
+              `${(item.kind === 'theme' ? item.id === s.theme : item.id === language) ? '●' : '○'} ${item.name}`,
+          ),
+          selected,
+          capacity,
+        ),
+      }
+    }
+    case 'Console': {
+      title = t(language, 'Console')
+      renderItem = (task) => {
+        const icon = { pending: '·', running: '↻', done: '✓', failed: '✗' }[task.status] || '?'
+        const elapsed = task.startTime
+          ? ` ${Math.round(((task.endTime || Date.now()) - task.startTime) / 1000)}s`
+          : ''
+        return `${icon} ${clipColumns(task.label, 40)}${clipColumns(elapsed, 8)}`
+      }
+      break
+    }
+    case 'Logs': {
+      title = t(language, 'Command Log')
+      renderItem = l => `${l.success ? '✓' : '✗'} ${clipColumns(l.command, 50)}`
+      break
+    }
+  }
+
+  const entries = items.map(renderItem)
+  const content = windowContent(entries, selected, capacity)
+  if (!entries.length) {
+    content.lines.push(search ? t(language, 'no_results') : getEmptyMessage(page, language))
+  }
+  return { title, ...content }
+}
+
+export function getEmptyMessage(page, language) {
+  const map = {
+    Tools: 'no_tools',
+    Updates: 'no_updates',
+    Tasks: 'no_tasks',
+    Environment: 'no_commands',
+    Config: 'no_configs',
+    System: 'no_commands',
+    Logs: 'no_logs',
+  }
+  return t(language, map[page] || 'no_items')
+}
+
+/** Detail panel: shows info about selected item. */
+export function detailContent(s, items) {
+  const { page, snapshot, selected, language } = s
+
+  let lines = []
+  const title = t(language, 'Details')
+
+  switch (page) {
+    case 'Dashboard': {
+      lines = [
+        t(language, 'dashboard_version', { version: snapshot.mise_version }),
+        '',
+        t(language, 'dashboard_tools_count', { count: snapshot.tools.length }),
+        t(language, 'dashboard_updates_count', { count: snapshot.updates.length }),
+        t(language, 'dashboard_tasks_count', { count: snapshot.tasks.length }),
+        t(language, 'dashboard_configs_count', { count: snapshot.configs.length }),
+        '',
+        targetHint(s),
+      ]
+      break
+    }
+    case 'Tools': {
+      const tool = items[selected]
+      if (tool) {
+        lines = [
+          `${t(language, 'detail_tool')}: ${tool.name}`,
+          `${t(language, 'detail_version')}: ${tool.version}`,
+          `${t(language, 'detail_requested')}: ${tool.requested || '—'}`,
+          tool.source ? `${t(language, 'detail_source')}: ${tool.source}` : '',
+          `${t(language, 'detail_installed')}: ${tool.installed ? t(language, 'installed') : t(language, 'not_installed')}`,
+          `${t(language, 'detail_active')}: ${tool.active ? t(language, 'active') : t(language, 'inactive')}`,
+          '',
+          t(language, 'detail_tools_hint'),
+        ].filter(Boolean)
+      }
+      else {
+        lines = [t(language, 'No tool selected')]
+      }
+      break
+    }
+    case 'Updates': {
+      const update = items[selected]
+      if (update) {
+        lines = [
+          `${t(language, 'detail_tool')}: ${update.name}`,
+          `${t(language, 'current')}: ${update.current}`,
+          `${t(language, 'latest')}: ${update.latest}`,
+          '',
+          t(language, 'detail_updates_hint'),
+        ]
+      }
+      else {
+        lines = [t(language, 'No update selected')]
+      }
+      break
+    }
+    case 'Tasks': {
+      const task = items[selected]
+      if (task) {
+        lines = [
+          `${t(language, 'detail_task')}: ${task.name}`,
+          `${t(language, 'description')}: ${task.description || '—'}`,
+          `${t(language, 'detail_command')}: ${task.command || '—'}`,
+          '',
+          t(language, 'detail_tasks_hint'),
+        ]
+      }
+      else {
+        lines = [t(language, 'No task selected')]
+      }
+      break
+    }
+    case 'Environment':
+    case 'System': {
+      const cmd = items[selected]
+      if (cmd) {
+        lines = [
+          `${t(language, 'detail_command')}: mise ${cmd.name}`,
+          `${t(language, 'description')}: ${cmd.description}`,
+          '',
+          t(language, 'detail_environment_hint'),
+        ]
+      }
+      else {
+        lines = [t(language, 'No command selected')]
+      }
+      break
+    }
+    case 'Config': {
+      const config = items[selected]
+      if (config) {
+        lines = [
+          `${t(language, 'Path')}: ${config.path}`,
+          s.configTarget?.path === config.path
+            ? t(language, 'config_target_selected', { path: config.path })
+            : '',
+          supportsConfigTarget(config.path) ? '' : t(language, 'config_target_unsupported'),
+          '',
+          t(language, 'Tools in config:'),
+          ...config.tools.map(t => `  • ${t}`),
+          '',
+          t(language, 'e_y_copy'),
+        ]
+      }
+      else {
+        lines = [t(language, 'No config selected')]
+      }
+      break
+    }
+    case 'Preferences': {
+      lines = [
+        t(language, 'current_language', {
+          lang: preferenceItems().find(item => item.id === language)?.name || language,
+        }),
+        t(language, 'current_theme', { theme: themeName(s.theme) }),
+        '',
+        t(language, 'apply_selected_setting'),
+        t(language, 'changes_persist'),
+      ]
+      break
+    }
+    case 'Console': {
+      const task = items[selected]
+      if (task) {
+        const statusText
+          = {
+            pending: t(language, 'console_pending'),
+            running: t(language, 'console_running'),
+            done: t(language, 'console_done'),
+            failed: t(language, 'console_failed'),
+          }[task.status] || task.status
+        const elapsed = task.startTime
+          ? Math.round(((task.endTime || Date.now()) - task.startTime) / 1000)
+          : 0
+        lines = [
+          `${task.label}`,
+          `${t(language, 'Status')}: ${statusText}`,
+          `${t(language, 'Command')}: ${task.command}`,
+          `${t(language, 'Duration')}: ${elapsed}s`,
+          '',
+          task.output || t(language, '(waiting for output...)'),
+        ]
+      }
+      else {
+        lines = [t(language, 'No task selected')]
+      }
+      break
+    }
+    case 'Logs': {
+      const log = items[selected]
+      if (log) {
+        lines = [
+          `${t(language, 'Command')}: ${log.command}`,
+          `${t(language, 'Status')}: ${log.success ? t(language, 'Success') : t(language, 'Failed')}`,
+          '',
+          log.output,
+        ]
+      }
+      else {
+        lines = [t(language, 'No log selected')]
+      }
+      break
+    }
+  }
+
+  return { title, lines }
+}
+
+export function detailViewport(s, items, width, height) {
+  const content = detailContent(s, items)
+  const lines = content.lines.flatMap(line => wrap(line, width))
+  const capacity = Math.max(0, height)
+  const maxScroll
+    = items.length || s.page === 'Dashboard' ? Math.max(0, lines.length - capacity) : 0
+  const scroll = Math.max(0, Math.min(s.detailScroll, maxScroll))
+  return {
+    title: content.title,
+    lines: lines.slice(scroll, scroll + capacity),
+    counter: `${lines.length ? scroll + 1 : 0}–${Math.min(lines.length, scroll + capacity)}/${lines.length}`,
+    maxScroll,
+  }
+}
+
+export function targetHint(s) {
+  return t(s.language, 'config_target_selected', {
+    path: s.configTarget?.path || t(s.language, 'config_target_none'),
+  })
+}

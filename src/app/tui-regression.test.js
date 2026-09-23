@@ -18,6 +18,7 @@ import { t } from '../config/i18n.js'
 import { loadSettings } from '../config/settings.js'
 import { normalizeKey } from '../main.js'
 import { Application } from './controller.js'
+import { openConfigTarget, openCustomTool, showHelp } from './overlays.js'
 import { clipColumns, PAGE_ORDER, VERSION_INTENT } from './state.js'
 import { createView } from './view.js'
 
@@ -66,7 +67,7 @@ function highlighted(ui, text) {
     .some(line =>
       line.spans.some(
         span =>
-          span.text.includes(text) && [...span.bg.buffer].slice(0, 3).join(',') === '38,50,56',
+          span.text.includes(text) && [...span.bg.buffer].slice(0, 3).join(',') === '44,53,80',
       ),
     )
 }
@@ -154,13 +155,13 @@ function cells(row) {
 
 function modalRect(ui, title) {
   const rows = ui.captureCharFrame().split('\n')
-  const top = rows.findIndex(row => row.includes(`╭ ${title}`))
+  const top = rows.findIndex(row => row.includes(`┌ ${title}`))
   expect(top).toBeGreaterThanOrEqual(0)
   const left = stringWidth(
-    rows[top].slice(0, rows[top].indexOf('╭', rows[top].indexOf(title) - 2)),
+    rows[top].slice(0, rows[top].indexOf('┌', rows[top].indexOf(title) - 2)),
   )
-  const right = stringWidth(rows[top].slice(0, rows[top].indexOf('╮', rows[top].indexOf(title))))
-  const bottom = rows.findIndex((row, index) => index > top && cells(row)[left] === '╰')
+  const right = stringWidth(rows[top].slice(0, rows[top].indexOf('┐', rows[top].indexOf(title))))
+  const bottom = rows.findIndex((row, index) => index > top && cells(row)[left] === '└')
   expect(bottom).toBeGreaterThan(top)
   expect(left).toBe(Math.floor((ui.renderer.width - (right - left + 1)) / 2))
   expect(top).toBe(Math.floor((ui.renderer.height - (bottom - top + 1)) / 2))
@@ -173,8 +174,8 @@ function modalRect(ui, title) {
       const end = x + span.width
       if (end > left && x <= right) {
         const bg = [...span.bg.buffer].slice(0, 3).join(',')
-        expect(['16,16,16', '38,50,56']).toContain(bg)
-        if (bg === '38,50,56') {
+        expect(['31,36,56', '44,53,80']).toContain(bg)
+        if (bg === '44,53,80') {
           expect(x).toBeGreaterThan(left)
           expect(end).toBeLessThanOrEqual(right)
         }
@@ -267,7 +268,7 @@ test('all modal surfaces have closed centered frames in EN/ZH at both layouts', 
               expect(highlighted(ui, 'v34')).toBe(true)
             app.state.overlay = null
             const closed = await frame()
-            expect(closed).not.toContain(`╭ ${titleKey ? t(language, titleKey) : 'mise install'}`)
+            expect(closed).not.toContain(`┌ ${titleKey ? t(language, titleKey) : 'mise install'}`)
           }
         }
       },
@@ -351,7 +352,7 @@ test('Builder title, input tails and wrapped help retain visible selection', asy
           expect(app.state.overlay.mode).toBe('input')
           expect(app.state.overlay.args).toBe(input)
           ui.mockInput.pressEscape()
-          expect(await frame()).not.toContain('╭ mise install')
+          expect(await frame()).not.toContain('┌ mise install')
         }
       }
       app.state.overlay = {
@@ -372,7 +373,7 @@ test('Builder title, input tails and wrapped help retain visible selection', asy
 test('Help scrolls without key leakage and cancels cleanly', async () => {
   await fixture(
     async ({ app, ui, frame }) => {
-      app.showHelp()
+      showHelp(app)
       const first = await frame()
       ui.mockInput.pressKey('o')
       expect(app.state.page).toBe('Dashboard')
@@ -387,11 +388,11 @@ test('Help scrolls without key leakage and cancels cleanly', async () => {
       ui.mockInput.pressKey('HOME')
       expect(await frame()).toBe(first)
       ui.mockInput.pressEscape()
-      expect(await frame()).not.toContain('╭ LAZYMISE')
-      app.showHelp()
+      expect(await frame()).not.toContain('┌ LAZYMISE')
+      showHelp(app)
       ui.mockInput.pressKey('q')
       expect(app.state.overlay).toBeNull()
-      app.showHelp()
+      showHelp(app)
       ui.mockInput.pressCtrlC()
       expect(app.state.overlay).toBeNull()
     },
@@ -422,7 +423,7 @@ test('small sizes stay bounded and confirmations always retain their prompt', as
             const rendered = await frame()
             if (width < 60 || height < 8) {
               expect(rendered).toContain(t(language, 'Terminal too small'))
-              expect(rendered).not.toContain('╭')
+              expect(rendered).not.toContain('┌')
             }
             else {
               modalRect(
@@ -490,6 +491,8 @@ async function isolated(run, setup = () => {}) {
       import { normalizeKey } from './src/main.js';
       import { loadSnapshot, validateConfigTarget } from './src/mise.js';
       import { VERSION_INTENT } from './src/app/state.js';
+      import { executeBackground, executeCommand } from './src/app/execution.js';
+      import { openCommandPalette, openConfigTarget, openContextCommands, openCustomTool, openRegistry, openVersionsForAction, runPageCommand, selectConfigTarget, useTool } from './src/app/overlays.js';
       import { t } from './src/config/i18n.js';
       import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, symlinkSync, watch } from 'node:fs';
       import { resolve } from 'node:path';
@@ -526,7 +529,7 @@ async function isolated(run, setup = () => {}) {
       const frame = async () => { app.update();await ui.renderOnce();return ui.captureCharFrame(); };
       const type = value => { for(const char of value)ui.mockInput.pressKey(char); };
       async function inputTarget(path) {
-        app.openConfigTarget();
+        openConfigTarget(app);
         ui.mockInput.pressKey('END');ui.mockInput.pressEnter();
         type(path);ui.mockInput.pressEnter();
       }
@@ -750,7 +753,7 @@ test('command target picker and custom tool preserve exact specs and explicit pa
       app.state.configTarget={path:other,create:false};
       await finished(index+1);
     }
-    app.state.configTarget={path,create:false};app.openCustomTool();
+    app.state.configTarget={path,create:false};openCustomTool(app);
     type('cargo:pG@1.2.3');
     ui.mockInput.pressTab();assert.equal(app.state.configTarget.path,path);
     ui.mockInput.pressEnter();await finished(3);
@@ -861,7 +864,7 @@ test('config target discovery rejects malformed records without discarding the s
       assert.match(app.state.status,/mise config ls --json/);
       assert.ok(app.state.status.includes(reason),app.state.status);
     }
-    app.openConfigTarget();writeFileSync(dir+'/configs','FAIL');
+    openConfigTarget(app);writeFileSync(dir+'/configs','FAIL');
     ui.mockInput.pressKey('r');
     await until(()=>app.state.overlay.error.includes('config fixture denied'),'selector refresh failure');
     assert.equal(app.state.snapshot,original);assert.equal(app.state.configTarget,target);
@@ -947,7 +950,7 @@ test('config target path validation rejects invalid and vanished files while kee
       assert.deepEqual(argv(),[]);
     }
     app.state.overlay=null;await inputTarget(valid);
-    app.openCustomTool();type('cargo:example@1.2.3');
+    openCustomTool(app);type('cargo:example@1.2.3');
     rmSync(valid);ui.mockInput.pressEnter();
     assert.equal(app.state.overlay.type,'CustomTool');
     assert.equal(app.state.overlay.input,'cargo:example@1.2.3');
@@ -973,10 +976,10 @@ test('config target creation approval is write-free and consumed after actual cr
     ui.mockInput.pressEnter();ui.mockInput.pressEnter();
     assert.deepEqual(app.state.configTarget,{path,create:true});
     assert.equal(existsSync(path),false);assert.deepEqual(argv(),[]);
-    app.openCustomTool();type('cargo:example@1.2.3');ui.mockInput.pressEnter();
+    openCustomTool(app);type('cargo:example@1.2.3');ui.mockInput.pressEnter();
     await finished(1);
     assert.equal(existsSync(path),true);assert.equal(app.state.configTarget.create,false);
-    rmSync(path);app.openCustomTool();type('cargo:example@2');ui.mockInput.pressEnter();
+    rmSync(path);openCustomTool(app);type('cargo:example@2');ui.mockInput.pressEnter();
     assert.equal(app.state.overlay.input,'cargo:example@2');
     assert.equal(argv().length,1);assert.equal(existsSync(path),false);
   `,
@@ -1158,9 +1161,9 @@ test('overlay flow direct versions and registry backend chains restore only thei
     `
     const path=dir+'/target.toml';writeFileSync(path,'');app.state.configTarget={path,create:false};
     app.state.snapshot.tools=[{name:'cargo:example',version:'1'}];app.jumpToPage('Tools');
-    await app.openVersionsForAction(VERSION_INTENT.Use);
+    await openVersionsForAction(app, VERSION_INTENT.Use);
     ui.mockInput.pressEscape();assert.equal(app.state.overlay,null);assert.equal(app.state.page,'Tools');
-    await app.openRegistry();
+    await openRegistry(app);
     const root=app.state.overlay;
     root.tools=[{name:'multi',backends:['npm','cargo']},{name:'single',backends:['cargo']}];
     root.search='';root.selected=0;app.update();
@@ -1190,14 +1193,14 @@ test('overlay flow late registry version and help responses cannot resurrect can
       if(kind==='help') {
         app.state.commands=[{name:'env',description:'Environment'}];app.jumpToPage('Environment');
       }
-      const request=kind==='registry'?app.openRegistry():kind==='ls-remote'?app.openVersionsForAction(VERSION_INTENT.Use):app.runPageCommand();
+      const request=kind==='registry'?openRegistry(app):kind==='ls-remote'?openVersionsForAction(app, VERSION_INTENT.Use):runPageCommand(app);
       let replacement;
       try {
         await until(()=>existsSync(dir+'/'+kind+'.ready'),kind+' start');
         const loading=app.state.overlay;
         ui.mockInput.pressKey('F2');assert.equal(app.state.overlay,loading);
         ui.mockInput.pressEscape();assert.equal(app.state.overlay,null);
-        app.openCustomTool();type('retained');
+        openCustomTool(app);type('retained');
         replacement=app.state.overlay;
       } finally {
         writeFileSync(dir+'/'+kind+'.release','');
@@ -1233,11 +1236,11 @@ test('overlay flow remote failures remain visible and retry in place for registr
     app.state.snapshot.tools=[{name:'cargo:example',version:'1'}];app.jumpToPage('Tools');
     for(const kind of ['registry','ls-remote','help']) {
       writeFileSync(dir+'/failure',kind);
-      if(kind==='registry')await app.openRegistry();
-      else if(kind==='ls-remote')await app.openVersionsForAction(VERSION_INTENT.Use);
+      if(kind==='registry')await openRegistry(app);
+      else if(kind==='ls-remote')await openVersionsForAction(app, VERSION_INTENT.Use);
       else {
         app.state.commands=[{name:'upgrade',description:'Upgrade'}];
-        app.openCommandPalette();ui.mockInput.pressEnter();
+        openCommandPalette(app);ui.mockInput.pressEnter();
         await until(()=>app.state.overlay?.type==='CommandBuilder' && !app.state.overlay.loading,'failed help');
       }
       assert.match(await frame(),/fixture denied/);
@@ -1305,7 +1308,7 @@ test('command target expert upgrade confirmation returns to the same builder and
     `
     const path=dir+'/target.toml';writeFileSync(path,'');app.state.configTarget={path,create:false};
     app.state.commands=[{name:'upgrade',description:'Upgrade tools'},{name:'doctor',description:'Diagnose'}];
-    app.openCommandPalette();ui.mockInput.pressKey('/');type('upgrade');ui.mockInput.pressEnter();
+    openCommandPalette(app);ui.mockInput.pressKey('/');type('upgrade');ui.mockInput.pressEnter();
     const palette=app.state.overlay;
     ui.mockInput.pressEnter();
     await until(()=>app.state.overlay?.type==='CommandBuilder' && !app.state.overlay.loading,'builder help');
@@ -1332,21 +1335,21 @@ test('command target expert upgrade confirmation returns to the same builder and
 test('command target missing executable nonzero exit and completion callback failures stay observable', async () => {
   await isolated(
     `
-    const task=app.executeBackground(['install','--yes','bad@1'],'failure');
+    const task=executeBackground(app, ['install','--yes','bad@1'],'failure');
     await finished(1);
     assert.equal(task.status,'failed');assert.match(task.output,/fixture install failure/);
     assert.equal(app.state.logs[0].success,false);
-    const callback=app.executeBackground(['install','--yes','ok@1'],'callback',()=>{throw Error('completion failure')});
+    const callback=executeBackground(app, ['install','--yes','ok@1'],'callback',()=>{throw Error('completion failure')});
     await finished(2);assert.equal(callback.status,'failed');assert.match(callback.output,/completion failure/);
     rmSync(dir+'/mise');
-    const missing=app.executeBackground(['install','--yes','missing@1'],'missing');
+    const missing=executeBackground(app, ['install','--yes','missing@1'],'missing');
     await finished(3);
     assert.equal(missing.status,'failed');assert.match(missing.output,/mise|ENOENT|not found/i);
     assert.equal(app.state.logs[0].success,false);
     const snapshot=app.state.snapshot;
-    await app.executeCommand(['edit',dir+'/target.toml'],true);
+    await executeCommand(app, ['edit',dir+'/target.toml'],true);
     assert.equal(app.state.logs[0].success,false);assert.match(app.state.logs[0].output,/mise|ENOENT|not found/i);
-    await app.executeCommand(['doctor'],false);
+    await executeCommand(app, ['doctor'],false);
     assert.equal(app.state.logs[0].success,false);assert.match(app.state.logs[0].output,/mise|ENOENT|not found/i);
     assert.equal(app.state.snapshot,snapshot);
   `,
@@ -1366,7 +1369,7 @@ test('command target missing executable nonzero exit and completion callback fai
 test('command target closed output streams do not finish a task before process exit', async () => {
   await isolated(
     `
-    const task=app.executeBackground(['install','--yes','slow@1'],'slow');
+    const task=executeBackground(app, ['install','--yes','slow@1'],'slow');
     try {
       await until(()=>existsSync(dir+'/closed'),'closed streams');
       assert.equal(task.status,'running');assert.equal(app.state.logs.length,0);
@@ -1399,7 +1402,7 @@ test('command target failed use consumes creation authorization only when a file
     `
     for(const name of ['missing','created']) {
       const path=dir+'/'+name+'.toml';app.state.configTarget={path,create:true};
-      assert.equal(app.useTool(name+'@1'),true);
+      assert.equal(useTool(app, name+'@1'),true);
       await finished(name==='missing'?1:2);
       assert.equal(app.state.consoleTasks[0].status,'failed');
       assert.equal(app.state.configTarget.create,name==='missing');
@@ -1431,7 +1434,7 @@ test('command target refresh and task prepend preserve the selected entity', asy
     const path=dir+'/target.toml';writeFileSync(path,'');app.state.configTarget={path,create:false};
     app.state.consoleTasks=[{id:'retained',label:'retained',command:'old',output:'old output',status:'done'}];
     app.jumpToPage('Console');
-    app.executeBackground(['install','--yes','example@1'],'new');
+    executeBackground(app, ['install','--yes','example@1'],'new');
     assert.equal(app.visibleItems()[app.state.selected].id,'retained');
     await finished(1);
     assert.equal(app.visibleItems()[app.state.selected].id,'retained');
@@ -1500,7 +1503,7 @@ test('layout target native EN ZH frames retain targets input paths and local con
           writeFileSync(path, '[tools]\n')
           app.state.snapshot.configs = [{ path, tools: ['node'] }]
           expect(await frame()).toContain('F2')
-          app.openConfigTarget()
+          openConfigTarget(app)
           await frame()
           modalRect(ui, t(language, 'config_target_title'))
           expect(highlighted(ui, 'config with spaces.toml')).toBe(true)
@@ -1523,7 +1526,7 @@ test('layout target native EN ZH frames retain targets input paths and local con
               expect(rendered).toContain(t(language, 'install_only_hint'))
             else expect(rendered).toContain('config with spaces.toml')
           }
-          app.openCustomTool()
+          openCustomTool(app)
           expect(await frame()).toContain('config with spaces.toml')
           ui.mockInput.pressKey('F2')
           ui.mockInput.pressKey('END')
@@ -1567,7 +1570,7 @@ test('layout target long path context scrolls without losing input selection or 
     async ({ app, ui, frame }) => {
       const path = `/${'long-directory/'.repeat(80)}last-directory/config.toml`
       app.state.snapshot.configs = [{ path, tools: [] }]
-      app.openConfigTarget()
+      openConfigTarget(app)
       const first = await frame()
       expect(first).toContain('PgUp/PgDn')
       expect(highlighted(ui, 'config.toml')).toBe(true)
@@ -1586,7 +1589,7 @@ test('layout target long path context scrolls without losing input selection or 
       expect(await frame()).toContain('last-directory')
       expect(app.state.overlay.input).toBe(path)
       app.state.configTarget = { path, create: false }
-      app.openCustomTool()
+      openCustomTool(app)
       app.state.overlay.input = 'cargo:example@1'
       app.state.overlay.error = 'explicit write failure'
       expect(await frame()).toContain('explicit write failure')
@@ -1608,7 +1611,7 @@ test('config target empty discovery offers project creation and preserves litera
   await isolated(
     `
     await app.refresh();assert.deepEqual(app.state.snapshot.configs,[]);
-    app.openConfigTarget();ui.mockInput.pressEnter();
+    openConfigTarget(app);ui.mockInput.pressEnter();
     assert.equal(app.state.overlay.type,'ConfirmCommand');
     assert.ok(app.state.overlay.message.includes(dir+'/mise.toml'));
     ui.mockInput.pressKey('n');assert.equal(app.state.overlay.type,'ConfigTarget');
@@ -1671,7 +1674,7 @@ test('navigation page commands exclude unrelated dashboard actions and Enter act
       {name:'exec',description:'Execute in environment'},
       {name:'doctor',description:'Diagnose installation'},
     ];
-    app.jumpToPage('Environment');app.openContextCommands();
+    app.jumpToPage('Environment');openContextCommands(app);
     assert.deepEqual(app.state.overlay.commands.map(command=>command.name),['env','exec']);
     ui.mockInput.pressEscape();
     app.state.search='Execute in environment';app.clampSelection();ui.mockInput.pressEnter();
@@ -1681,7 +1684,7 @@ test('navigation page commands exclude unrelated dashboard actions and Enter act
     app.jumpToPage('Tasks');app.state.search='Needle task';app.clampSelection();
     ui.mockInput.pressEnter();await finished(1);
     assert.deepEqual(argv(),[['run','right']]);
-    app.jumpToPage('Dashboard');app.openContextCommands();
+    app.jumpToPage('Dashboard');openContextCommands(app);
     assert.deepEqual(app.state.overlay.commands.map(command=>command.name),['doctor']);
     ui.mockInput.pressEscape();
   `,
@@ -1713,9 +1716,9 @@ test('config target startup selects the global file using mise environment prece
       assert.equal(app.state.overlay,null);assert.equal(app.state.status,'');
       const header=(await frame()).split('\\n')[0];
       assert.ok(header.includes('F2'));assert.ok(!header.includes('Not selected'));
-      await app.openRegistry();assert.equal(app.state.overlay.type,'Picker');
+      await openRegistry(app);assert.equal(app.state.overlay.type,'Picker');
       ui.mockInput.pressEscape();
-      assert.equal(app.selectConfigTarget(project),true);await app.refresh();
+      assert.equal(selectConfigTarget(app, project),true);await app.refresh();
       assert.equal(app.state.configTarget.path,project);
       assert.deepEqual(argv(),[]);
     `,
@@ -1746,7 +1749,7 @@ test('config target startup neither creates missing globals nor overrides explic
       if(mode==='invalid')mkdirSync(global);
       else if(mode!=='missing')writeFileSync(global,'[tools]\\n');
       writeFileSync(dir+'/configs',mode==='discovery-failed'?'{}':JSON.stringify([{path:project,tools:[]},{path:global,tools:[]}]));
-      if(mode==='manual')app.selectConfigTarget(project);
+      if(mode==='manual')selectConfigTarget(app, project);
       await app.start();
       assert.equal(app.state.configTarget?.path??null,mode==='manual'?project:null);
       assert.equal(app.state.overlay,null);assert.deepEqual(argv(),[]);
