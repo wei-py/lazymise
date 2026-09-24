@@ -10,7 +10,7 @@ export default antfu(
     ignores: ['skills/**', '.agents/**', '.claude/**'],
   },
   {
-    files: ['src/**/*.js'],
+    files: ['src/**/*.js', 'vendor/**/*.js'],
     rules: {
       'no-control-regex': 'off',
       'node/prefer-global/process': 'off',

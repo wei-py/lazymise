@@ -1,4 +1,4 @@
-import { DEFAULT_THEME, themeColors } from '../../config/themes.js'
+import { DEFAULT_THEME, themeColors } from '../../../vendor/lazy-kit/themes.js'
 
 // One view per process; each render swaps in the palette before drawing.
 // Stable object mutated in place: every view module shares this reference, so

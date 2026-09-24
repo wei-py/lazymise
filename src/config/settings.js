@@ -1,45 +1,27 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
-import { DEFAULT_THEME, isTheme } from './themes.js'
+import { loadSettings as kitLoad, saveSettings as kitSave } from '../../vendor/lazy-kit/settings.js'
+import { DEFAULT_THEME, isTheme } from '../../vendor/lazy-kit/themes.js'
 
-function settingsDir() {
-  if (process.env.LAZYMISE_CONFIG_DIR)
-    return process.env.LAZYMISE_CONFIG_DIR
-  const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), '.config')
-  return join(xdg, 'lazymise')
-}
+const DEFAULTS = { language: 'en', theme: DEFAULT_THEME }
 
-function settingsPath() {
-  return join(settingsDir(), 'settings.json')
+function directory() {
+  return process.env.LAZYMISE_CONFIG_DIR
 }
 
 export function loadSettings() {
-  try {
-    const raw = readFileSync(settingsPath(), 'utf-8')
-    const parsed = JSON.parse(raw)
-    return {
-      language: parsed.language === 'zh' ? 'zh' : 'en',
-      theme: isTheme(parsed.theme) ? parsed.theme : DEFAULT_THEME,
-    }
-  }
-  catch {
-    return { language: 'en', theme: DEFAULT_THEME }
+  const settings = kitLoad('lazymise', DEFAULTS, directory())
+  return {
+    language: settings.language === 'zh' ? 'zh' : 'en',
+    theme: isTheme(settings.theme) ? settings.theme : DEFAULT_THEME,
   }
 }
 
 export function saveSettings(settings) {
-  const dir = settingsDir()
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(
-    settingsPath(),
-    JSON.stringify(
-      {
-        language: settings.language || 'en',
-        theme: isTheme(settings.theme) ? settings.theme : DEFAULT_THEME,
-      },
-      null,
-      2,
-    ),
+  kitSave(
+    'lazymise',
+    {
+      language: settings.language || 'en',
+      theme: isTheme(settings.theme) ? settings.theme : DEFAULT_THEME,
+    },
+    directory(),
   )
 }
