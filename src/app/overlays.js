@@ -1,7 +1,10 @@
 import { lstatSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
-import { t } from '../config/i18n.js'
+import { applyTextKey } from '../../vendor/lazy-kit/keys.js'
+import { THEMES } from '../../vendor/lazy-kit/themes.js'
+import { LANGUAGES, t } from '../config/i18n.js'
+import { saveSettings } from '../config/settings.js'
 import {
   commandBelongsToPage,
   commandHelp,
@@ -14,7 +17,6 @@ import {
 import { executeBackground, executeCommand } from './execution.js'
 import {
   containsCaseInsensitive,
-  deleteLastGrapheme,
   filterCommands,
   filterRegistryTools,
   moveIndex,
@@ -78,6 +80,10 @@ export function handleOverlayKey(app, key) {
     case 'CustomTool':
       handleCustomToolKey(app, key)
       break
+    case 'Settings':
+      handleSettingsKey(app, key)
+      break
+    case 'Quit':
     case 'ConfirmDelete':
     case 'ConfirmCommand':
       handleConfirmKey(app, key)
@@ -89,6 +95,7 @@ export function toggleSearch(app) {
   app.state.overlay = {
     type: 'Search',
     parent: null,
+    range: 'local',
     previousSearch: app.state.search,
     previousSelected: app.state.selected,
   }
@@ -97,17 +104,30 @@ export function toggleSearch(app) {
 
 export function handleSearchKey(app, key) {
   const ov = app.state.overlay
-  const { name, ctrl, meta, text } = key
-  if (ctrl || meta) {
-    if (ctrl && !meta && name === 'u')
-      app.state.search = ''
-    else return
+  if (!key.ctrl && !key.meta && key.name === 'tab') {
+    switchSearchRange(app, ov)
+    return
   }
-  else if (name === 'enter') {
+  const result = applyTextKey(key, app.state.search, app.state.search.length)
+  if (result.submit) {
+    if (ov.range === 'add') {
+      const items = ov.loading || ov.loadError ? [] : filterRegistryTools(ov)
+      const item = items[ov.selected]
+      if (!item)
+        return
+      if (item.direct && item.pinned) {
+        if (useTool(app, item.name))
+          cancelOverlayFlow(app)
+      }
+      else {
+        void openBackends(app, item, ov)
+      }
+      return
+    }
     closeOverlay(app)
     return
   }
-  else if (name === 'escape') {
+  if (result.cancel) {
     app.state.search = ov.previousSearch
     app.state.selected = ov.previousSelected
     app.state.detailScroll = 0
@@ -115,18 +135,31 @@ export function handleSearchKey(app, key) {
     closeOverlay(app)
     return
   }
-  else if (name === 'backspace') {
-    app.state.search = deleteLastGrapheme(app.state.search)
+  if (result.value !== app.state.search) {
+    app.state.search = result.value
+    app.state.selected = 0
+    app.state.detailScroll = 0
+    app.clampSelection()
   }
-  else if (text) {
-    app.state.search += text
+  if (ov.range === 'add')
+    ov.search = app.state.search
+  app.update()
+}
+
+function switchSearchRange(app, ov) {
+  ov.range = ov.range === 'add' ? 'local' : 'add'
+  if (ov.range === 'add' && !ov.registryLoaded) {
+    Object.assign(ov, {
+      level: 'registry',
+      tools: [],
+      backends: ['All'],
+      filterIdx: 0,
+      selected: 0,
+      search: app.state.search,
+      registryLoaded: true,
+    })
+    void loadPicker(app, ov)
   }
-  else {
-    return
-  }
-  app.state.selected = 0
-  app.state.detailScroll = 0
-  app.clampSelection()
   app.update()
 }
 
@@ -136,35 +169,23 @@ export function beginSearch(app, ov) {
   app.update()
 }
 
-export function editSearch(app, ov, key, items) {
-  const { name, ctrl, meta, text } = key
-  if (ctrl || meta) {
-    if (ctrl && !meta && name === 'u')
-      ov.search = ''
-    else return
-  }
-  else if (name === 'enter') {
+export function editSearch(app, ov, key) {
+  const result = applyTextKey(key, ov.search, ov.search.length)
+  if (result.submit) {
     ov.searching = false
     app.update()
     return
   }
-  else if (name === 'escape') {
+  if (result.cancel) {
     Object.assign(ov, ov.previousSearch)
     ov.searching = false
     app.update()
     return
   }
-  else if (name === 'backspace') {
-    ov.search = deleteLastGrapheme(ov.search)
+  if (result.value !== ov.search) {
+    ov.search = result.value
+    ov.selected = 0
   }
-  else if (text) {
-    ov.search += text
-  }
-  else {
-    return
-  }
-  ov.selected = 0
-  ov.selected = Math.max(0, Math.min(ov.selected, items().length - 1))
   app.update()
 }
 
@@ -328,18 +349,16 @@ export function chooseConfigTarget(app, ov, path, allowCreate) {
 
 export function handleConfigTargetKey(app, key) {
   const ov = app.state.overlay
-  const { name, ctrl, meta, text } = key
+  const { name, ctrl, meta } = key
   if (ov.mode === 'path') {
-    if (ctrl || meta) {
-      if (ctrl && !meta && name === 'u')
-        ov.input = ''
-      else return
-    }
-    else if (name === 'escape') {
+    const result = applyTextKey(key, ov.input, ov.input.length)
+    if (result.cancel) {
       ov.mode = 'list'
       ov.error = ''
+      app.update()
+      return
     }
-    else if (name === 'enter') {
+    if (result.submit) {
       if (!ov.input.trim())
         return
       const input = ov.input.trim()
@@ -347,20 +366,13 @@ export function handleConfigTargetKey(app, key) {
       chooseConfigTarget(app, ov, path, true)
       return
     }
-    else if (name === 'backspace') {
-      ov.input = deleteLastGrapheme(ov.input)
-    }
-    else if (text) {
-      ov.input += text
-    }
-    else {
-      return
-    }
+    if (result.value !== ov.input)
+      ov.input = result.value
     app.update()
     return
   }
   if (ov.searching) {
-    editSearch(app, ov, key, () => configTargetItems(app, ov))
+    editSearch(app, ov, key)
     return
   }
   if (ctrl || meta)
@@ -507,7 +519,7 @@ export function handlePickerKey(app, key) {
   const ov = app.state.overlay
   const { name, ctrl, meta, shift } = key
   if (ov.level === 'registry' && ov.searching) {
-    editSearch(app, ov, key, () => filterRegistryTools(ov))
+    editSearch(app, ov, key)
     return
   }
   if (ctrl || meta)
@@ -535,8 +547,16 @@ export function handlePickerKey(app, key) {
     }
     const items = filterRegistryTools(ov)
     if (name === 'enter') {
-      if (!ov.loadError && items[ov.selected])
-        void openBackends(app, items[ov.selected], ov)
+      const item = items[ov.selected]
+      if (!ov.loadError && item) {
+        if (item.direct && item.pinned) {
+          if (useTool(app, item.name))
+            cancelOverlayFlow(app)
+        }
+        else {
+          void openBackends(app, item, ov)
+        }
+      }
     }
     else {
       moveOverlaySelection(app, ov, name, items.length)
@@ -596,6 +616,69 @@ export function moveOverlaySelection(app, ov, name, length) {
   app.update()
 }
 
+export function openSettings(app) {
+  app.state.overlay = { type: 'Settings', parent: null, cursor: 0 }
+  app.update()
+}
+
+export function handleSettingsKey(app, key) {
+  const ov = app.state.overlay
+  if (key.ctrl || key.meta)
+    return
+  const { name } = key
+  if (name === 'escape') {
+    closeOverlay(app)
+    return
+  }
+  if (name === 'j' || name === 'down') {
+    ov.cursor = 1
+    app.update()
+    return
+  }
+  if (name === 'k' || name === 'up') {
+    ov.cursor = 0
+    app.update()
+    return
+  }
+  if (name === 'enter' || name === 'l' || name === 'right') {
+    cycleSetting(app, 1)
+    return
+  }
+  if (name === 'h' || name === 'left')
+    cycleSetting(app, -1)
+}
+
+function cycleSetting(app, delta) {
+  const cursor = app.state.overlay.cursor
+  const { language, theme } = app.state
+  if (cursor === 0) {
+    const ids = LANGUAGES.map(item => item.id)
+    const next = ids[(ids.indexOf(language) + delta + ids.length) % ids.length]
+    if (next !== language && persistSettings(app, { language: next, theme }))
+      app.state.language = next
+  }
+  else {
+    const ids = THEMES.map(entry => entry.id)
+    const next = ids[(ids.indexOf(theme) + delta + ids.length) % ids.length]
+    if (next !== theme && persistSettings(app, { language, theme: next }))
+      app.state.theme = next
+  }
+  app.update()
+}
+
+function persistSettings(app, settings) {
+  try {
+    saveSettings(settings)
+    return true
+  }
+  catch (error) {
+    app.state.status = t(app.state.language, 'settings_save_failed', {
+      error: error.message || String(error),
+    })
+    return false
+  }
+}
+
 export function openCommandPalette(app) {
   app.state.overlay = {
     type: 'CommandPalette',
@@ -630,7 +713,7 @@ export function openContextCommands(app) {
 export function handleCommandPaletteKey(app, key) {
   const ov = app.state.overlay
   if (ov.searching) {
-    editSearch(app, ov, key, () => filterCommands(ov.commands, ov.search))
+    editSearch(app, ov, key)
     return
   }
   if (key.ctrl || key.meta)
@@ -693,14 +776,7 @@ export async function loadCommandHelp(app, ov) {
 
 export function handleCommandBuilderKey(app, key) {
   const ov = app.state.overlay
-  const { name, ctrl, meta, text } = key
-  if (ctrl || meta) {
-    if (ctrl && !meta && name === 'u' && ov.mode === 'input') {
-      ov.args = ''
-      app.update()
-    }
-    return
-  }
+  const { name } = key
   if (ov.mode === 'help') {
     if (name === 'escape' || name === 'q' || name === 'tab' || name === 'enter') {
       ov.mode = 'input'
@@ -714,16 +790,17 @@ export function handleCommandBuilderKey(app, key) {
     }
     return
   }
-  if (name === 'escape') {
-    closeOverlay(app)
-    return
-  }
-  if (name === 'tab') {
+  if (name === 'tab' && !key.ctrl && !key.meta) {
     ov.mode = 'help'
     app.update()
     return
   }
-  if (name === 'enter') {
+  const result = applyTextKey(key, ov.args, ov.args.length)
+  if (result.cancel) {
+    closeOverlay(app)
+    return
+  }
+  if (result.submit) {
     if (ov.loading || ov.error)
       return
     const args = ov.args.trim() ? ov.args.trim().split(/\s+/) : []
@@ -736,11 +813,8 @@ export function handleCommandBuilderKey(app, key) {
     }
     return
   }
-  if (name === 'backspace')
-    ov.args = deleteLastGrapheme(ov.args)
-  else if (text)
-    ov.args += text
-  else return
+  if (result.value !== ov.args)
+    ov.args = result.value
   app.update()
 }
 
@@ -755,31 +829,19 @@ export function openCustomTool(app) {
 
 export function handleCustomToolKey(app, key) {
   const ov = app.state.overlay
-  const { name, ctrl, meta, text } = key
-  if (ctrl || meta) {
-    if (ctrl && !meta && name === 'u')
-      ov.input = ''
-    else return
-  }
-  else if (name === 'escape') {
+  const result = applyTextKey(key, ov.input, ov.input.length)
+  if (result.cancel) {
     closeOverlay(app)
     return
   }
-  else if (name === 'enter') {
+  if (result.submit) {
     const spec = ov.input.trim()
     if (spec && useTool(app, spec))
       cancelOverlayFlow(app)
     return
   }
-  else if (name === 'backspace') {
-    ov.input = deleteLastGrapheme(ov.input)
-  }
-  else if (text) {
-    ov.input += text
-  }
-  else {
-    return
-  }
+  if (result.value !== ov.input)
+    ov.input = result.value
   app.update()
 }
 
@@ -807,10 +869,10 @@ export function useTool(app, spec) {
     app,
     ['use', '--yes', '--path', target.path, spec],
     `use ${spec} → ${target.path}`,
-    (task) => {
+    (job) => {
       if (app.state.configTarget?.path !== target.path)
         return
-      let created = task.status === 'done'
+      let created = job.state === 'done'
       if (!created) {
         try {
           created = statSync(target.path).isFile()
