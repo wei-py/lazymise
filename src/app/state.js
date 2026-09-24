@@ -1,6 +1,4 @@
 import stringWidth from 'string-width'
-import { LANGUAGES } from '../config/i18n.js'
-import { THEMES } from '../config/themes.js'
 
 const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
 
@@ -12,7 +10,6 @@ export const PAGE = {
   Environment: 'Environment',
   Config: 'Config',
   System: 'System',
-  Preferences: 'Preferences',
   Logs: 'Logs',
   Console: 'Console',
 }
@@ -26,7 +23,6 @@ export const PAGE_ORDER = [
   PAGE.Environment,
   PAGE.Config,
   PAGE.System,
-  PAGE.Preferences,
   PAGE.Logs,
 ]
 
@@ -50,14 +46,6 @@ export function layoutMode(width, height) {
   if (width >= 60)
     return 'single'
   return 'small'
-}
-
-/** Preferences list: languages first so their indexes stay stable, then theme palettes. */
-export function preferenceItems() {
-  return [
-    ...LANGUAGES.map(item => ({ kind: 'language', id: item.id, name: item.name })),
-    ...THEMES.map(theme => ({ kind: 'theme', id: theme.id, name: theme.name })),
-  ]
 }
 
 export function focusSeq() {
@@ -88,12 +76,6 @@ export function clipColumns(value, width) {
   return `${result}…`
 }
 
-export function deleteLastGrapheme(value) {
-  let last = 0
-  for (const segment of segmenter.segment(value)) last = segment.index
-  return value.slice(0, last)
-}
-
 export function supportsConfigTarget(path) {
   return path.endsWith('.toml') && path.split(/[\\/]/).at(-1) !== 'rust-toolchain.toml'
 }
@@ -114,19 +96,49 @@ export function containsCaseInsensitive(value, query) {
   return value.toLowerCase().includes(query.toLowerCase())
 }
 
+const BACKEND_SPEC = /^([a-z][a-z0-9+.-]*):(\S+)$/i
+
+/** Parse a query typed as a full backend spec, e.g. npm:uapp or cargo:ex@1.2.3. */
+export function parseSpecQuery(query) {
+  const spec = (query || '').trim()
+  const match = BACKEND_SPEC.exec(spec)
+  if (!match)
+    return null
+  const [, backend, name] = match
+  return { spec, backend, name, pinned: name.lastIndexOf('@') > 0 }
+}
+
 export function filterRegistryTools(overlay) {
-  let filtered = overlay.tools || []
-  if (overlay.search) {
-    const query = overlay.search.toLowerCase()
-    filtered = filtered.filter(
+  const tools = overlay.tools || []
+  const query = (overlay.search || '').trim()
+  let filtered = tools
+  if (query) {
+    const needle = query.toLowerCase()
+    filtered = tools.filter(
       tool =>
-        tool.name.toLowerCase().includes(query)
-        || (tool.description && tool.description.toLowerCase().includes(query)),
+        tool.name.toLowerCase().includes(needle)
+        || (tool.description && tool.description.toLowerCase().includes(needle))
+        || (tool.backends || []).some(backend =>
+          `${backend}:${tool.name}`.toLowerCase().includes(needle)),
     )
   }
   if (overlay.filterIdx > 0 && overlay.backends) {
     const backend = overlay.backends[overlay.filterIdx]
     filtered = filtered.filter(tool => tool.backends && tool.backends.includes(backend))
+  }
+  const direct = parseSpecQuery(query)
+  if (
+    direct
+    && !tools.some(
+      tool =>
+        tool.name.toLowerCase() === direct.name.toLowerCase()
+        && (tool.backends || []).some(backend => backend.toLowerCase() === direct.backend.toLowerCase()),
+    )
+  ) {
+    filtered = [
+      { name: direct.spec, backends: [], description: '', direct: true, pinned: direct.pinned },
+      ...filtered,
+    ]
   }
   return filtered
 }

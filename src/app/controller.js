@@ -1,6 +1,7 @@
+import { createJobRunner } from '../../vendor/lazy-kit/jobs.js'
+import { DEFAULT_THEME } from '../../vendor/lazy-kit/themes.js'
 import { t } from '../config/i18n.js'
 import { loadSettings, saveSettings } from '../config/settings.js'
-import { DEFAULT_THEME } from '../config/themes.js'
 import {
   commandBelongsToPage,
   commandCatalog,
@@ -17,6 +18,7 @@ import {
   openContextCommands,
   openCustomTool,
   openRegistry,
+  openSettings,
   runPageCommand,
   selectConfigTarget,
   showHelp,
@@ -32,7 +34,6 @@ import {
   moveIndex,
   PAGE,
   PAGE_ORDER,
-  preferenceItems,
 } from './state.js'
 
 export class Application {
@@ -40,6 +41,7 @@ export class Application {
   #exit
   #dying = false
   #detailMaxScroll = 0
+  #listCapacity = 0
   projectConfigMissing = false
 
   constructor(render, exit) {
@@ -63,8 +65,21 @@ export class Application {
       loading: true,
       width: 100,
       height: 24,
-      consoleTasks: [],
+      jobs: [],
+      dismissedJobs: new Set(),
     }
+    this.runner = createJobRunner({
+      onPatch: () => {
+        this.state.jobs = this.runner.list()
+        this.update()
+      },
+    })
+    this.state.jobs = this.runner.list()
+  }
+
+  /** Shutdown hook: abort every in-flight job before the renderer tears down. */
+  async close() {
+    this.runner.abortAll()
   }
 
   update() {
@@ -72,6 +87,8 @@ export class Application {
     if (viewport) {
       this.state.width = viewport.width
       this.state.height = viewport.height
+      if (viewport.listCapacity != null)
+        this.#listCapacity = viewport.listCapacity
       this.#detailMaxScroll = viewport.detailMaxScroll
       this.state.detailScroll = Math.min(this.state.detailScroll, this.#detailMaxScroll)
       if (this.state.overlay && viewport.overlayMaxScroll != null) {
@@ -149,9 +166,9 @@ export class Application {
       if (name === 'c')
         this.#quit()
       else if (name === 'd')
-        this.moveVertical(5)
+        this.moveVertical(this.#halfPage())
       else if (name === 'u')
-        this.moveVertical(-5)
+        this.moveVertical(-this.#halfPage())
       return
     }
     if (meta)
@@ -169,50 +186,26 @@ export class Application {
       case 'r':
         void this.refresh()
         return
-      case 'f2':
-        openConfigTarget(this)
-        return
-      case 'a':
-        void openRegistry(this)
-        return
-      case 'A':
-        openCustomTool(this)
-        return
       case ':':
-        openCommandPalette(this)
+        openSettings(this)
         return
-      case 'm':
-        openContextCommands(this)
+      case 'L':
+        this.#toggleLanguage()
+        return
+      case 'x':
+        this.#abortNewest()
         return
       case '1':
-        this.jumpToPage(PAGE.Dashboard)
+        this.state.focus = FOCUS.Navigation
+        this.update()
         return
       case '2':
-        this.jumpToPage(PAGE.Tools)
+        this.state.focus = FOCUS.List
+        this.update()
         return
       case '3':
-        this.jumpToPage(PAGE.Updates)
-        return
-      case '4':
-        this.jumpToPage(PAGE.Tasks)
-        return
-      case '5':
-        this.jumpToPage(PAGE.Environment)
-        return
-      case '6':
-        this.jumpToPage(PAGE.Config)
-        return
-      case '7':
-        this.jumpToPage(PAGE.System)
-        return
-      case '8':
-        this.jumpToPage(PAGE.Preferences)
-        return
-      case '9':
-        this.jumpToPage(PAGE.Console)
-        return
-      case '0':
-        this.jumpToPage(PAGE.Logs)
+        this.state.focus = FOCUS.Details
+        this.update()
         return
       case '[':
         this.changePage(-1)
@@ -239,11 +232,19 @@ export class Application {
       case 'tab':
         this.cycleFocus(shift ? -1 : 1)
         return
+      case 'g':
       case 'home':
         this.#goTop()
         return
+      case 'G':
       case 'end':
         this.#goBottom()
+        return
+      case 'pageup':
+        this.moveVertical(-this.#halfPage())
+        return
+      case 'pagedown':
+        this.moveVertical(this.#halfPage())
         return
       case 'escape':
         if (this.state.focus === FOCUS.Details)
@@ -252,78 +253,128 @@ export class Application {
           this.state.focus = FOCUS.Navigation
         this.update()
         return
+      case 'enter':
+        if (this.state.focus === FOCUS.Navigation)
+          this.state.focus = FOCUS.List
+        else if (this.state.focus === FOCUS.List)
+          this.state.focus = FOCUS.Details
+        this.update()
+        return
     }
-    if (name === 'enter' && this.state.focus === FOCUS.Navigation) {
-      this.state.focus = FOCUS.List
-      this.update()
+    // Action keys apply only with the list focused.
+    if (this.state.focus !== FOCUS.List)
       return
+    switch (name) {
+      case 'a':
+        void openRegistry(this)
+        return
+      case 'A':
+        openCustomTool(this)
+        return
+      case 'f2':
+        openConfigTarget(this)
+        return
+      case 'm':
+        openContextCommands(this)
+        return
+      case 'M':
+        openCommandPalette(this)
+        return
     }
-    if (this.state.focus === FOCUS.List)
-      this.#handlePageKey(name)
+    this.#handlePageKey(name)
   }
 
   #handlePageKey(name) {
     switch (this.state.page) {
       case PAGE.Tools:
-        if (name === 'enter' || name === 'v')
+        if (name === 'I')
           void useSelectedVersion(this)
         else if (name === 'i')
           void installSelectedVersion(this)
-        else if (name === 'd')
+        else if (name === 'D')
           void this.deleteSelectedTool()
         break
       case PAGE.Updates:
         if (name === 'space')
           this.toggleSelectedUpdate()
-        else if (name === 'enter' || name === 'u')
+        else if (name === 'u')
           void this.upgradeSelected()
         else if (name === 'U')
           void this.upgradeSelected(true)
         break
       case PAGE.Tasks:
-        if (name === 'enter')
+        if (name === 'R')
           void this.runSelectedTask()
         break
       case PAGE.Environment:
       case PAGE.System:
-        if (name === 'enter')
+        if (name === 'R')
           void runPageCommand(this)
         break
       case PAGE.Config:
-        if (name === 'enter')
+        if (name === 's')
           selectConfigTarget(this)
         else if (name === 'e')
           void this.openConfig()
         else if (name === 'y')
           copySelectedConfig(this)
         break
-      case PAGE.Preferences:
-        if (name === 'enter')
-          this.applySelectedPreference()
-        break
       case PAGE.Console:
-        if (name === 'd') {
+        if (name === 'D')
           this.#dismissConsoleTasks()
-        }
-        else if (name === 'enter' && this.visibleItems().length) {
-          this.state.focus = FOCUS.Details
-          this.update()
-        }
         break
       case PAGE.Logs:
-        if (name === 'enter' && this.selectedLog()) {
-          this.state.focus = FOCUS.Details
-          this.update()
-        }
-        break
       case PAGE.Dashboard:
         break
     }
   }
 
   #quit() {
+    const active = this.state.jobs.filter(
+      job => job.state === 'queued' || job.state === 'running',
+    )
+    if (active.length) {
+      this.state.overlay = {
+        type: 'Quit',
+        parent: null,
+        scroll: 0,
+        message: t(this.state.language, 'jobs still running: {count}', { count: active.length }),
+        onConfirm: () => {
+          this.#dying = true
+          this.#exit(0)
+        },
+      }
+      this.update()
+      return
+    }
     this.#dying = true
     this.#exit(0)
+  }
+
+  #halfPage() {
+    return Math.max(1, Math.floor(this.#listCapacity / 2))
+  }
+
+  #abortNewest() {
+    const active = [...this.state.jobs]
+      .reverse()
+      .find(job => job.state === 'queued' || job.state === 'running')
+    if (active)
+      this.runner.abort(active.id)
+  }
+
+  #toggleLanguage() {
+    const language = this.state.language === 'zh' ? 'en' : 'zh'
+    try {
+      saveSettings({ language, theme: this.state.theme })
+      this.state.language = language
+    }
+    catch (error) {
+      this.state.status = t(this.state.language, 'settings_save_failed', {
+        error: error.message || String(error),
+      })
+    }
+    this.update()
   }
 
   async deleteSelectedTool() {
@@ -389,49 +440,12 @@ export class Application {
       await executeCommand(this, ['edit', config.path], true)
   }
 
-  applySelectedPreference() {
-    const candidate = this.visibleItems()[this.state.selected]
-    if (
-      !candidate
-      || candidate.id === (candidate.kind === 'theme' ? this.state.theme : this.state.language)
-    ) {
-      return
-    }
-    const settings
-      = candidate.kind === 'theme'
-        ? { language: this.state.language, theme: candidate.id }
-        : { language: candidate.id, theme: this.state.theme }
-    try {
-      saveSettings(settings)
-      this.state.language = settings.language
-      this.state.theme = settings.theme
-      this.state.status
-        = candidate.kind === 'theme'
-          ? t(settings.language, 'current_theme', { theme: candidate.name })
-          : t(settings.language, 'current_language', { lang: candidate.name })
-    }
-    catch (error) {
-      this.state.status = t(this.state.language, 'preference_save_failed', {
-        error: error.message || String(error),
-      })
-    }
-    this.update()
-  }
-
   jumpToPage(page, focus = FOCUS.List) {
     this.state.overlay = null
     this.state.focus = focus
     if (this.state.page !== page) {
       this.state.page = page
-      this.state.selected
-        = page === PAGE.Preferences
-          ? Math.max(
-              0,
-              preferenceItems().findIndex(
-                item => item.kind === 'language' && item.id === this.state.language,
-              ),
-            )
-          : 0
+      this.state.selected = 0
       this.state.detailScroll = 0
       this.state.search = ''
     }
@@ -498,9 +512,10 @@ export class Application {
 
   #dismissConsoleTasks() {
     const selection = captureSelection(this)
-    this.state.consoleTasks = this.state.consoleTasks.filter(
-      task => task.status === 'pending' || task.status === 'running',
-    )
+    for (const job of this.state.jobs) {
+      if (job.state !== 'queued' && job.state !== 'running')
+        this.state.dismissedJobs.add(job.id)
+    }
     restoreSelection(this, selection)
     this.update()
   }
@@ -528,10 +543,10 @@ export class Application {
         return search
           ? snapshot.configs.filter(item => matches(item.path, item.tools.join(' ')))
           : snapshot.configs
-      case PAGE.Console:
-        return search
-          ? this.state.consoleTasks.filter(item => matches(item.label, item.command, item.output))
-          : this.state.consoleTasks
+      case PAGE.Console: {
+        const jobs = this.state.jobs.filter(job => !this.state.dismissedJobs.has(job.id))
+        return search ? jobs.filter(item => matches(item.label, item.state, item.lastLine)) : jobs
+      }
       case PAGE.Logs:
         return search
           ? this.state.logs.filter(item => matches(item.command, item.output))
@@ -542,8 +557,6 @@ export class Application {
           commands.filter(item => commandBelongsToPage(page, item.name)),
           search,
         )
-      case PAGE.Preferences:
-        return preferenceItems()
       default:
         return []
     }
@@ -567,10 +580,6 @@ export class Application {
     return this.state.page === PAGE.Config
       ? this.visibleItems()[this.state.selected] || null
       : null
-  }
-
-  selectedLog() {
-    return this.state.page === PAGE.Logs ? this.visibleItems()[this.state.selected] || null : null
   }
 
   selectedPageCommand() {

@@ -12,8 +12,6 @@ function itemKey(app, item) {
       return item.id
     case PAGE.Logs:
       return item
-    case PAGE.Preferences:
-      return item.id
     default:
       return item.name
   }
