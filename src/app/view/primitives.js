@@ -66,6 +66,7 @@ export function box(
     return false
   const innerWidth = width - 2
   const innerHeight = height - 2
+  const titleColor = content.titleColor || frameColor
   const label = clipColumns(` ${content.title || ''} `, innerWidth)
   const counter = content.counter ? clipColumns(` ${content.counter} `, innerWidth) : ''
 
@@ -78,8 +79,15 @@ export function box(
     vertical: '│',
   }
 
+  const fill = border.horizontal.repeat(Math.max(0, innerWidth - stringWidth(label)))
   const frame = [
-    `${border.topLeft}${label}${border.horizontal.repeat(innerWidth - stringWidth(label))}${border.topRight}`,
+    titleColor === frameColor
+      ? `${border.topLeft}${label}${fill}${border.topRight}`
+      : [
+          fg(frameColor)(border.topLeft),
+          fg(titleColor)(label),
+          fg(frameColor)(`${fill}${border.topRight}`),
+        ],
     ...Array.from(
       { length: innerHeight },
       () => `${border.vertical}${' '.repeat(innerWidth)}${border.vertical}`,
@@ -94,7 +102,7 @@ export function box(
       top: top + 1,
       width: innerWidth,
       height: innerHeight,
-      lines: content.lines.map(line => ` ${line}`),
+      lines: content.lines.map(line => (Array.isArray(line) ? [fg(color)(' '), ...line] : ` ${line}`)),
       color,
       background,
       colors: content.colors,
@@ -104,16 +112,23 @@ export function box(
   }
 }
 
-/** Render a bordered panel with focus-aware frame color. */
+const PANEL_INDEX = { nav: 1, list: 2, detail: 3 }
+
+/** Render a bordered panel titled `[n] Title (count)` with focus-aware colors. */
 export function panel(id, left, top, width, height, content, s) {
   const focused = PANEL_FOCUS[id] === s.focus
+  const prefix = `[${PANEL_INDEX[id]}] `
+  const suffix = ` (${content.count ?? 0})`
+  // Clip the label so `[n]` and `(count)` survive narrow panels.
+  const room = Math.max(1, width - 4 - stringWidth(prefix) - stringWidth(suffix))
+  const title = `${prefix}${clipColumns(content.title || '', room)}${suffix}`
   return box(
     id,
     left,
     top,
     width,
     height,
-    { ...content, title: focused ? `[${content.title}]` : content.title },
+    { ...content, title, titleColor: focused ? COLORS.focus : COLORS.muted },
     focused ? COLORS.focus : COLORS.border,
   )
 }
@@ -139,14 +154,18 @@ export function showNode(
   }
   node.visible = true
   Object.assign(node, { left, top, width, height, fg: color, bg: background })
-  const visible = lines.slice(0, height).map(line => clipColumns(line, width))
-  if (colors) {
+  const visible = lines.slice(0, height)
+  if (colors || visible.some(line => Array.isArray(line))) {
     node.content = new StyledText(
-      visible.map((line, index) => fg(colors[index] || color)(`${index ? '\n' : ''}${line}`)),
+      visible.flatMap((line, index) => {
+        if (Array.isArray(line))
+          return index === 0 ? line : [fg(color)('\n'), ...line]
+        return [fg(colors?.[index] || color)(`${index ? '\n' : ''}${clipColumns(line, width)}`)]
+      }),
     )
   }
   else {
-    node.content = visible.join('\n')
+    node.content = visible.map(line => clipColumns(line, width)).join('\n')
   }
 }
 

@@ -1,28 +1,17 @@
 import stringWidth from 'string-width'
+import { JOB_GLYPH } from '../../../vendor/lazy-kit/jobs.js'
 import { t } from '../../config/i18n.js'
-import { themeName } from '../../config/themes.js'
-import { clipColumns, PAGE_ORDER, preferenceItems, supportsConfigTarget } from '../state.js'
+import { clipColumns, PAGE_ORDER, supportsConfigTarget } from '../state.js'
 import { clipPath, displayPath, padColumns, windowContent, wrap } from './primitives.js'
 
 /** Sidebar: page navigation. */
 export function navContent(s, capacity) {
-  const shortcuts = {
-    Dashboard: '1',
-    Tools: '2',
-    Updates: '3',
-    Tasks: '4',
-    Environment: '5',
-    Config: '6',
-    System: '7',
-    Preferences: '8',
-    Console: '9',
-    Logs: '0',
-  }
   const entries = PAGE_ORDER.map(
-    page => `${page === s.page ? '▸' : ' '} ${shortcuts[page]} ${pageName(page, s.language)}`,
+    page => `${page === s.page ? '▸' : ' '} ${pageName(page, s.language)}`,
   )
   return {
     title: t(s.language, 'Sections'),
+    count: PAGE_ORDER.length,
     ...windowContent(entries, PAGE_ORDER.indexOf(s.page), capacity),
   }
 }
@@ -49,7 +38,13 @@ export function listContent(s, items, capacity, width) {
         '',
         t(language, 'dashboard_version', { version: snapshot.mise_version }),
       ]
-      return { title: t(language, 'dashboard_title'), lines: stats, selected: -1, counter: '' }
+      return {
+        title: t(language, 'dashboard_title'),
+        count: stats.length,
+        lines: stats,
+        selected: -1,
+        counter: '',
+      }
     }
     case 'Tools': {
       title = t(language, 'Tools')
@@ -83,27 +78,13 @@ export function listContent(s, items, capacity, width) {
         `${s.configTarget?.path === c.path ? '●' : '○'} ${clipPath(displayPath(c.path), width - 2)}${supportsConfigTarget(c.path) ? '' : ` [${t(language, 'config_target_unsupported')}]`}`
       break
     }
-    case 'Preferences': {
-      return {
-        title: t(language, 'preferences_title'),
-        ...windowContent(
-          items.map(
-            item =>
-              `${(item.kind === 'theme' ? item.id === s.theme : item.id === language) ? '●' : '○'} ${item.name}`,
-          ),
-          selected,
-          capacity,
-        ),
-      }
-    }
     case 'Console': {
       title = t(language, 'Console')
-      renderItem = (task) => {
-        const icon = { pending: '·', running: '↻', done: '✓', failed: '✗' }[task.status] || '?'
-        const elapsed = task.startTime
-          ? ` ${Math.round(((task.endTime || Date.now()) - task.startTime) / 1000)}s`
+      renderItem = (job) => {
+        const elapsed = job.startedAt
+          ? ` ${Math.round(((job.endedAt || Date.now()) - job.startedAt) / 1000)}s`
           : ''
-        return `${icon} ${clipColumns(task.label, 40)}${clipColumns(elapsed, 8)}`
+        return `${JOB_GLYPH[job.state] || '?'} ${clipColumns(job.label, 40)}${clipColumns(elapsed, 8)}`
       }
       break
     }
@@ -117,9 +98,13 @@ export function listContent(s, items, capacity, width) {
   const entries = items.map(renderItem)
   const content = windowContent(entries, selected, capacity)
   if (!entries.length) {
-    content.lines.push(search ? t(language, 'no_results') : getEmptyMessage(page, language))
+    content.lines.push(
+      search
+        ? t(language, 'no results for "{query}"', { query: search })
+        : getEmptyMessage(page, language),
+    )
   }
-  return { title, ...content }
+  return { title, count: items.length, ...content }
 }
 
 export function getEmptyMessage(page, language) {
@@ -236,7 +221,7 @@ export function detailContent(s, items) {
           t(language, 'Tools in config:'),
           ...config.tools.map(t => `  • ${t}`),
           '',
-          t(language, 'e_y_copy'),
+          t(language, 'config_actions'),
         ]
       }
       else {
@@ -244,38 +229,36 @@ export function detailContent(s, items) {
       }
       break
     }
-    case 'Preferences': {
-      lines = [
-        t(language, 'current_language', {
-          lang: preferenceItems().find(item => item.id === language)?.name || language,
-        }),
-        t(language, 'current_theme', { theme: themeName(s.theme) }),
-        '',
-        t(language, 'apply_selected_setting'),
-        t(language, 'changes_persist'),
-      ]
-      break
-    }
     case 'Console': {
-      const task = items[selected]
-      if (task) {
+      const job = items[selected]
+      if (job) {
         const statusText
           = {
-            pending: t(language, 'console_pending'),
+            queued: t(language, 'console_pending'),
             running: t(language, 'console_running'),
             done: t(language, 'console_done'),
             failed: t(language, 'console_failed'),
-          }[task.status] || task.status
-        const elapsed = task.startTime
-          ? Math.round(((task.endTime || Date.now()) - task.startTime) / 1000)
+            canceled: t(language, 'console_canceled'),
+          }[job.state] || job.state
+        const elapsed = job.startedAt
+          ? Math.round(((job.endedAt || Date.now()) - job.startedAt) / 1000)
           : 0
         lines = [
-          `${task.label}`,
+          `${job.label}`,
           `${t(language, 'Status')}: ${statusText}`,
-          `${t(language, 'Command')}: ${task.command}`,
           `${t(language, 'Duration')}: ${elapsed}s`,
+          ...(job.startedAt !== null && job.endedAt !== null && job.state !== 'running'
+            ? [
+                job.state === 'canceled'
+                  ? t(language, 'canceled · {seconds}', { seconds: `${elapsed}s` })
+                  : t(language, 'exit {code} · {seconds}', {
+                      code: job.exitCode,
+                      seconds: `${elapsed}s`,
+                    }),
+              ]
+            : []),
           '',
-          task.output || t(language, '(waiting for output...)'),
+          job.lastLine || t(language, '(waiting for output...)'),
         ]
       }
       else {
@@ -312,6 +295,7 @@ export function detailViewport(s, items, width, height) {
   const scroll = Math.max(0, Math.min(s.detailScroll, maxScroll))
   return {
     title: content.title,
+    count: lines.length,
     lines: lines.slice(scroll, scroll + capacity),
     counter: `${lines.length ? scroll + 1 : 0}–${Math.min(lines.length, scroll + capacity)}/${lines.length}`,
     maxScroll,

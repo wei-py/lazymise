@@ -26,8 +26,6 @@ export function pageActionsHint(s) {
       return hintSegments(lang, 'console_hint')
     case 'System':
       return hintSegments(lang, 'system_hint')
-    case 'Preferences':
-      return hintSegments(lang, 'preferences_hint')
     case 'Logs':
       return hintSegments(lang, 'logs_hint')
     default:
@@ -36,9 +34,15 @@ export function pageActionsHint(s) {
 }
 
 export function overlayHint(overlay, language) {
+  if (overlay.type === 'Quit')
+    return hintSegments(language, 'quit_actions')
+  if (overlay.type === 'Settings')
+    return hintSegments(language, 'settings_hint')
+  if (overlay.type === 'Search')
+    return hintSegments(language, 'search_range_hint')
   if (overlay.type === 'ConfirmCommand' || overlay.type === 'ConfirmDelete')
     return hintSegments(language, 'confirm_prompt')
-  if (overlay.type === 'Search' || overlay.searching)
+  if (overlay.searching)
     return hintSegments(language, 'text_search_hint')
   if (overlay.type === 'ConfigTarget') {
     return hintSegments(

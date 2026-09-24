@@ -1,5 +1,6 @@
+import { fg } from '@opentui/core'
 import stringWidth from 'string-width'
-import { hintLine, t } from '../../config/i18n.js'
+import { hintLine, LANGUAGES, t } from '../../config/i18n.js'
 import { configTargetItems } from '../overlays.js'
 import { clipColumns, filterCommands, filterRegistryTools } from '../state.js'
 import { COLORS } from './colors.js'
@@ -33,14 +34,14 @@ export function renderOverlay(nodes, s, app, width, height) {
     case 'Help': {
       title = t(language, 'help_title_full')
       const keys = [
-        'help_page_jump',
+        'help_panels',
         'help_move',
-        'help_tab_esc',
+        'help_enter_esc',
         'help_tools_line',
         'help_updates_line',
+        'help_more_actions',
         'help_global_line',
         'help_config_line',
-        'text_search_hint',
       ]
       const content = scrollContent(
         keys.flatMap(key => wrap(t(language, key), contentWidth)),
@@ -52,10 +53,51 @@ export function renderOverlay(nodes, s, app, width, height) {
       maxScroll = content.maxScroll
       break
     }
-    case 'Search':
+    case 'Search': {
       title = t(language, 'search_title')
-      lines = [inputLine(t(language, 'search_prompt', { query: '' }), s.search, contentWidth)]
+      const range = overlay.range === 'add' ? 'add' : 'local'
+      const chip = [
+        fg(range === 'local' ? COLORS.focus : COLORS.muted)('local'),
+        fg(COLORS.border)(' | '),
+        fg(range === 'add' ? COLORS.focus : COLORS.muted)('add'),
+      ]
+      const input = inputLine(t(language, 'search_prompt', { query: '' }), s.search, contentWidth)
+      if (range === 'add') {
+        const items = overlay.loading || overlay.loadError ? [] : filterRegistryTools(overlay)
+        if (overlay.loading) {
+          lines = [chip, input, t(language, 'searching…')]
+        }
+        else if (overlay.loadError) {
+          lines = [chip, input, t(language, 'error: {message}', { message: overlay.error })]
+        }
+        else if (!s.search) {
+          lines = [chip, input, t(language, 'press / to search')]
+        }
+        else if (!items.length) {
+          lines = [chip, input, t(language, 'no results for "{query}"', { query: s.search })]
+        }
+        else {
+          const content = windowContent(
+            items.map(item =>
+              itemLine(
+                item.name,
+                item.direct ? t(language, 'registry_direct_spec') : item.description,
+                contentWidth,
+              ),
+            ),
+            overlay.selected,
+            Math.max(0, capacity - 2),
+          )
+          lines = [chip, input, ...content.lines]
+          selected = content.selected < 0 ? -1 : content.selected + 2
+          counter = content.counter
+        }
+      }
+      else {
+        lines = [chip, input, t(language, 'filters the current list instantly')]
+      }
       break
+    }
     case 'ConfigTarget': {
       title = t(language, 'config_target_title')
       if (overlay.mode === 'path') {
@@ -200,9 +242,33 @@ export function renderOverlay(nodes, s, app, width, height) {
       maxScroll = content.maxScroll
       break
     }
+    case 'Settings': {
+      title = t(language, 'Settings')
+      const languageName = LANGUAGES.find(item => item.id === s.language)?.name || s.language
+      lines = [
+        `${t(language, 'Language')}: ${languageName}`,
+        `${t(language, 'Theme')}: ${s.theme}`,
+      ]
+      selected = overlay.cursor ?? 0
+      break
+    }
+    case 'Quit': {
+      title = t(language, 'Quit?')
+      const content = scrollContent(
+        wrap(overlay.message || '', contentWidth),
+        overlay.scroll,
+        capacity,
+      )
+      lines = content.lines
+      counter = content.counter
+      maxScroll = content.maxScroll
+      break
+    }
   }
 
-  lines = lines.slice(0, capacity).map(line => clipColumns(line, contentWidth))
+  lines = lines
+    .slice(0, capacity)
+    .map(line => (typeof line === 'string' ? clipColumns(line, contentWidth) : line))
   // Hints remain on the bottom row even while long content scrolls above them.
   lines.push(clipColumns(hintLine(overlayHint(overlay, language)), contentWidth))
   const left = Math.floor((width - modalWidth) / 2)
@@ -243,8 +309,13 @@ export function renderPickerContent(overlay, s, contentWidth, capacity) {
           query: `${overlay.search || ''}${overlay.searching ? '█' : ''}`,
         }),
       )
+      emptyKey = overlay.search ? 'registry_no_match' : 'no_results'
       entries = filterRegistryTools(overlay).map(item =>
-        itemLine(item.name, item.description, contentWidth),
+        itemLine(
+          item.name,
+          item.direct ? t(language, 'registry_direct_spec') : item.description,
+          contentWidth,
+        ),
       )
       break
     }
@@ -275,7 +346,7 @@ export function renderPickerContent(overlay, s, contentWidth, capacity) {
     capacity - visibleHeader.length,
   )
   return {
-    lines: [...visibleHeader, ...(entries.length ? content.lines : [t(language, emptyKey)])],
+    lines: [...visibleHeader, ...(entries.length ? content.lines : wrap(t(language, emptyKey), contentWidth))],
     selected: content.selected < 0 ? -1 : content.selected + visibleHeader.length,
     counter: context.maxScroll
       ? `PgUp/PgDn ${context.counter}  ${content.counter}`
