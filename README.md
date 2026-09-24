@@ -9,7 +9,7 @@ A fast terminal interface for [mise](https://mise.jdx.dev/) tools, versions, upd
 ## Features
 
 - Browse installed and active tool versions.
-- Use one unified registry picker with dynamically discovered backend filters, then explicitly choose a source when a tool has multiple backends.
+- Use one unified registry picker with dynamically discovered backend filters, then explicitly choose a source when a tool has multiple backends. Registry search accepts full backend specs (e.g. `npm:uapp`), so packages outside the mise registry open the version list; pinned specs (`npm:uapp@3.2.1`) submit directly like Custom Tool.
 - Add, activate, install, and uninstall versions with confirmation.
 - Review and upgrade outdated tools.
 - Run project tasks from `mise.toml`.
@@ -64,16 +64,20 @@ Options:
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `Tab` / `Shift-Tab`         | Cycle panel focus; in the registry picker, cycle every discovered backend prefix; in command arguments, focus the scrollable help |
 | `h` `j` `k` `l` or arrows   | Move focus, selection, details, or the focused command help viewport                                                              |
-| `1`…`8`, `9`, `0`           | Open Dashboard–Preferences, Console, or Logs, with list focus                                                                     |
+| `1` / `2` / `3`             | Focus the Navigation / List / Details panel                                                                                       |
+| `[` / `]`                   | Previous / next page                                                                                                              |
+| `L`                          | Switch 中文 / English                                                                                                             |
+| `x`                          | Abort the newest running background job                                                                                           |
 | `F2`                        | Select the exact configuration file for subsequent guided Use operations                                                          |
 | `a`                         | Select a target if needed, then open the registry and choose a tool, source, and version                                          |
 | `A`                         | Select a target if needed, then enter a complete custom spec such as `cargo:example@1.2.3`                                        |
-| `Enter` / `v` in Tools      | Browse versions and write the chosen version to the selected file                                                                 |
+| `I` in Tools                | Browse versions and write the chosen version to the selected file                                                                 |
 | `i`                         | Browse versions and install one                                                                                                   |
-| `d`                         | Uninstall the selected version after confirmation                                                                                 |
-| `Space`, `Enter` / `u`, `U` | Mark updates; confirm marked/current tools; confirm all filtered tools                                                            |
+| `D`                         | Uninstall the selected version after confirmation                                                                                 |
+| `Space`, `u`, `U`           | Mark updates; confirm marked/current tools; confirm all filtered tools                                                            |
 | `m`                         | Open actions related to the current page                                                                                          |
-| `:`                         | Open the complete mise command catalog                                                                                            |
+| `:`                         | Open settings (language / theme)                                                                                                  |
+| `M`                         | Open the complete mise command catalog                                                                                           |
 | `/`                         | Filter the page list, registry, command palette, or configuration selector                                                        |
 | `Esc`                       | Return one overlay level, or Details → List → Navigation                                                                          |
 | `Ctrl+u` in text            | Clear the current input; Backspace deletes one complete grapheme                                                                  |
@@ -84,7 +88,7 @@ See [USAGE.md](USAGE.md) for the complete workflow and key reference.
 
 ## Language
 
-Press `8` to open Preferences. Use `j/k` or the arrow keys to select **English** or **中文**, then press `Enter` to apply. `●` marks the applied language; the highlighted row is the pending selection. Repeated `Enter` leaves the applied language unchanged. The choice is applied only after saving succeeds:
+Press `:` to open the two-row settings popup. `j/k` selects the language or theme row, `Enter`/`l` moves to the next value and `h` to the previous one; changes apply and save instantly, `Esc` closes. `L` toggles 中文/English directly. The choice persists in:
 
 ```text
 ~/.config/lazymise/settings.json
@@ -92,13 +96,13 @@ Press `8` to open Preferences. Use `j/k` or the arrow keys to select **English**
 
 `LAZYMISE_CONFIG_DIR` and `XDG_CONFIG_HOME` are supported.
 
-If saving fails, the current language stays active and the status shows the original error. Fix the settings path and press `Enter` to retry.
+If saving fails, the current language stays active and the status shows the original error.
 
 Built-in help (`?`) supports `j/k` or arrows, `PageUp`/`PageDown`, and `Home`/`End`. `Esc`, `q`, or `Ctrl-c` closes help.
 
 ### TUI fixes
 
-Guided writes now select a concrete configuration file before choosing tools. Navigation uses digits, Enter acts on the visible selected row, and nested dialogs preserve their parent input and selection. Language saving remains explicit. Native dialogs retain centered borders, Unicode-aware clipping, visible focus, and local hints; long output and paths can be scrolled.
+Guided writes now select a concrete configuration file before choosing tools. `1`/`2`/`3` focus panels, `[`/`]` switch pages, Enter opens Details, and nested dialogs preserve their parent input and selection. Language saving remains explicit. Native dialogs retain centered borders, Unicode-aware clipping, visible focus, and local hints; long output and paths can be scrolled.
 
 ## Configuration target
 
@@ -153,7 +157,7 @@ lazymise
 ### 常用功能
 
 - 在一个统一 registry 选择器中查看工具；来源筛选由 `mise registry --json` 动态生成，npm、GitHub、Go、Cargo 等常见来源优先显示，同时保留 Aqua、asdf、vfox、pipx 和其他来源。
-- 按 `a` 打开 registry，按 `Tab` / `Shift-Tab` 循环来源筛选，按 `/` 组合文字筛选。工具只有一个来源时直接进入版本列表；有多个来源时必须明确选择完整来源标识。
+- 按 `a` 打开 registry，按 `Tab` / `Shift-Tab` 循环来源筛选，按 `/` 组合文字筛选。工具只有一个来源时直接进入版本列表；有多个来源时必须明确选择完整来源标识。搜索接受完整后端标识（如 `npm:uapp`），未收录进 mise 注册表的工具会以“完整标识”行进入版本选择，带 `@版本` 的标识直接提交 Use。
 - 查看、添加、启用、安装和卸载 registry 工具及自定义后端工具。
 - 多选并升级过期工具。
 - 运行 `mise.toml` 中定义的项目任务。
@@ -161,7 +165,7 @@ lazymise
 - 按 `m` 打开当前页面相关操作，按 `:` 打开全部 mise 命令。
 - 按 `A` 输入 `github:owner/repository`、`npm:package` 等完整自定义后端标识；此类标识已明确来源，不会再次要求选择来源。
 - 按 `F2` 选择具体配置文件；Tools 的 `Enter/v` 与 `A` 通过 `--path` 写入该文件，库存不随目标过滤。
-- 按 `8` 进入设置，用 `j/k` 选择语言，再按 `Enter` 保存并应用。
+- 按 `:` 打开设置弹层（语言 / 主题两行），`j/k` 选行、`Enter`/`l` 下一值、`h` 上一值，即时生效并保存；`L` 直接切换语言。
 
 完整操作说明见 [USAGE.md](USAGE.md)。
 

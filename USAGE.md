@@ -64,24 +64,17 @@ Upgrade 和专家命令仍可能按 mise 自身规则修改配置；选择目标
 
 ## 页面与焦点
 
-| 按键 | 页面        |
+| 按键 | 焦点        |
 | ---- | ----------- |
-| `1`  | Dashboard   |
-| `2`  | Tools       |
-| `3`  | Updates     |
-| `4`  | Tasks       |
-| `5`  | Environment |
-| `6`  | Config      |
-| `7`  | System      |
-| `8`  | Preferences |
-| `9`  | Console     |
-| `0`  | Logs        |
+| `1`  | Navigation  |
+| `2`  | List        |
+| `3`  | Details     |
 
-数字与 `[` / `]` 直接进入目标页的 List。同页重按数字只聚焦列表，不重置选中行。字母页面别名已移除。
+页面通过 Navigation 的 `Enter` 进入，`[` / `]` 在相邻页面间切换；数字只移动焦点，不重置选中行。
 
 三个焦点为 Navigation、List、Details，青色边框和高亮表示当前位置：
 
-- Navigation：`j/k` 或上下键浏览分区，经过 Preferences 也不偷焦点；`Enter` 进入 List。
+- Navigation：`j/k` 或上下键浏览分区；`Enter` 进入 List。
 - List：`j/k` 移动选中行，`Home/End` 跳到首尾。
 - Details：`j/k`、`Ctrl+d/u`、`Home/End` 滚动实际内容，位置计数显示可见范围。
 - `h/l` 或左右键移动焦点；`Tab/Shift-Tab` 循环焦点。
@@ -99,10 +92,9 @@ Upgrade 和专家命令仍可能按 mise 自身规则修改配置；选择目标
 | Tasks                | 执行选中的 `mise run <task>`     |
 | Environment / System | 打开选中命令的帮助及参数输入     |
 | Config               | 将当前文件设为写入目标，不跳页   |
-| Preferences          | 保存并应用待选语言               |
 | Console / Logs       | 聚焦输出 Details                 |
 
-所有选中项操作只在 List 生效。Details 中的 `v/i/d/e/y/u/U` 不会触发列表命令。
+Enter 在任何页面打开 Details。所有选中项动作键（Tools：`I`/`i`/`D`，Updates：`Space`/`u`/`U`，Tasks 与 Environment/System：`R`，Config：`s`/`e`/`y`，Console：`D`）只在 List 生效；Details 焦点不会触发列表动作键。
 
 ## 添加、切换、安装与卸载
 
@@ -110,7 +102,7 @@ Upgrade 和专家命令仍可能按 mise 自身规则修改配置；选择目标
 
 1. 按 `a`；若尚无目标，先选择配置文件。
 2. 从 `mise registry --json` 加载工具和来源；`Tab/Shift-Tab` 循环实际发现的来源过滤。
-3. `/` 编辑搜索；`Enter` 接受查询并退出编辑，再按 Enter 选择工具。
+3. `/` 编辑搜索；`Enter` 接受查询并退出编辑，再按 Enter 选择工具。搜索也接受完整后端标识：未收录进 mise 注册表的工具（如 `npm:uapp`）以“完整标识”行出现，Enter 进入版本选择；带 `@版本` 的标识（`npm:uapp@3.2.1`）与 Custom Tool 相同，直接提交 Use。
 4. 多个来源时进入来源选择；零或单一来源直接进入版本选择。
 5. 选择版本，Enter 提交 Use。完整后端工具标识保持原样传入 mise。
 
@@ -190,7 +182,7 @@ Config List 的 e 编辑当前文件，y 复制文件全文；都不受是否可
 
 ## 语言与帮助
 
-按 `8` 打开 Preferences，j/k 选择 English 或中文，Enter 保存成功后应用。`●` 标记已应用语言，高亮为待选项。仅移动游标不保存，重复 Enter 不反转语言；保存失败保留原语言和游标，可重试。
+按 `:` 打开设置弹层（语言 / 主题两行）：`j/k` 选行，`Enter`/`l` 下一值、`h` 上一值，即时生效并保存，`Esc` 关闭；`L` 直接切换语言。保存失败保留原语言。
 
 默认语言设置路径为 `~/.config/lazymise/settings.json`，支持 `LAZYMISE_CONFIG_DIR` 和 `XDG_CONFIG_HOME`。不持久化配置目标。
 
