@@ -5,6 +5,7 @@ import { loadSettings, saveSettings } from '../config/settings.js'
 import {
   commandBelongsToPage,
   commandCatalog,
+  createProjectConfigFile,
   defaultConfigTarget,
   loadSnapshot,
 } from '../mise.js'
@@ -312,7 +313,9 @@ export class Application {
           void runPageCommand(this)
         break
       case PAGE.Config:
-        if (name === 's')
+        if (name === 'n')
+          this.createProjectConfig()
+        else if (name === 's')
           selectConfigTarget(this)
         else if (name === 'e')
           void this.openConfig()
@@ -432,6 +435,36 @@ export class Application {
     const task = this.selectedTask()
     if (task)
       await executeCommand(this, ['run', task.name], true)
+  }
+
+  createProjectConfig() {
+    this.state.overlay = {
+      type: 'ConfirmCommand',
+      parent: null,
+      scroll: 0,
+      message: t(this.state.language, 'config_project_create', { path: process.cwd() }),
+      onConfirm: () => {
+        try {
+          const target = createProjectConfigFile()
+          this.state.configTarget = target
+          if (!this.state.snapshot.configs.some(config => config.path === target.path))
+            this.state.snapshot.configs.push({ path: target.path, tools: [] })
+          this.projectConfigMissing = false
+          this.state.search = ''
+          this.state.selected = this.state.snapshot.configs.findIndex(config => config.path === target.path)
+          this.state.detailScroll = 0
+          this.clampSelection()
+          this.state.status = t(this.state.language, 'config_project_created', { path: target.path })
+        }
+        catch (error) {
+          this.state.status = t(this.state.language, 'config_project_failed', {
+            error: error.message || String(error),
+          })
+        }
+        this.update()
+      },
+    }
+    this.update()
   }
 
   async openConfig() {

@@ -968,6 +968,45 @@ test('config target discovery rejects malformed records without discarding the s
   )
 })
 
+test('Config creates a current-directory target only after confirmation and never overwrites', async () => {
+  await isolated(`
+    const path=resolve('mise.toml'),global=dir+'/global.toml';
+    writeFileSync(global,'[tools]\\nnode = "22"\\n');
+    app.state.configTarget={path:global,create:false};
+    app.state.snapshot.configs=[{path:global,tools:['node']}];
+    app.jumpToPage('Config');
+    for(const focus of ['Navigation','Details']) {
+      app.state.focus=focus;ui.mockInput.pressKey('n');
+      assert.equal(app.state.overlay,null);assert.equal(existsSync(path),false);
+    }
+    app.state.focus='List';
+    ui.mockInput.pressKey('n');
+    assert.equal(app.state.overlay.type,'ConfirmCommand');
+    assert.ok(app.state.overlay.message.includes(path));
+    assert.equal(existsSync(path),false);
+    ui.mockInput.pressEscape();
+    assert.equal(app.state.configTarget.path,global);assert.equal(existsSync(path),false);
+    app.state.search='global';
+    ui.mockInput.pressKey('n');ui.mockInput.pressEnter();
+    assert.deepEqual(app.state.configTarget,{path,create:false});
+    assert.equal(Bun.TOML.parse(readFileSync(path,'utf8')).tools.constructor,Object);
+    assert.equal(app.selectedConfig().path,path);assert.equal(app.state.search,'');
+    writeFileSync(path,'[tools]\\npython = "3.13"\\n');
+    ui.mockInput.pressKey('n');ui.mockInput.pressEnter();
+    assert.match(app.state.status,/EEXIST/);
+    assert.equal(readFileSync(path,'utf8'),'[tools]\\npython = "3.13"\\n');
+    assert.equal(app.state.snapshot.configs.filter(config=>config.path===path).length,1);
+    rmSync(path);symlinkSync(global,path);
+    ui.mockInput.pressKey('n');ui.mockInput.pressEnter();
+    assert.match(app.state.status,/EEXIST/);
+    assert.equal(readFileSync(global,'utf8'),'[tools]\\nnode = "22"\\n');
+    rmSync(path);mkdirSync(path);
+    ui.mockInput.pressKey('n');ui.mockInput.pressEnter();
+    assert.match(app.state.status,/EEXIST/);
+    assert.equal(app.state.configTarget.path,path);
+  `)
+})
+
 test('config target F2 deduplicates files and Config Enter chooses without changing inventory', async () => {
   await isolated(
     `

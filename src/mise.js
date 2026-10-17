@@ -1,4 +1,4 @@
-import { lstatSync, realpathSync, statSync } from 'node:fs'
+import { lstatSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, extname, resolve } from 'node:path'
 import { $ } from 'bun'
@@ -156,6 +156,13 @@ async function loadConfigs() {
       { cause: error },
     )
   }
+}
+
+/** Create only in cwd; exclusive creation never overwrites files or follows links. */
+export function createProjectConfigFile() {
+  const path = resolve('mise.toml')
+  writeFileSync(path, '[tools]\n', { flag: 'wx' })
+  return { path, create: false }
 }
 
 /** Validate an explicit write target without creating files or promising permissions. */

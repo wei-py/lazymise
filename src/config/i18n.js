@@ -217,7 +217,10 @@ const EN = {
   'config_copied': 'Copied {path} to clipboard',
   'config_copy_failed': 'Clipboard copy failed: {error}',
   'no_config_selected': 'No config selected',
-  'config_actions': 's: set target  e: edit  y: copy',
+  'config_actions': 'n: create local  s: set target  e: edit  y: copy',
+  'config_project_create': 'Create {path}/mise.toml and select it as the write target?\nCurrent directory only; existing files will not be overwritten. Global configuration is unchanged.',
+  'config_project_created': 'Created local configuration: {path}',
+  'config_project_failed': 'Cannot create local configuration: {error}',
   'Duration': 'Duration',
   'No task selected': 'No task selected',
   '(waiting for output...)': '(waiting for output...)',
@@ -270,11 +273,11 @@ const EN = {
     'Tools: a add, A custom tool, i install, I use version, D uninstall (confirm), F2 config target',
   'help_updates_line': 'Updates: space mark, u upgrade marked/current, U upgrade all filtered',
   'help_more_actions':
-    'Tasks / Env / System: R run   Config: s set target, e edit, y copy   Console: D clear finished',
+    'Tasks / Env / System: R run   Config: n create local, s set target, e edit, y copy   Console: D clear finished',
   'help_global_line':
     '/ search   ? help   m page commands   M command palette   : settings   L language   q / ctrl+c quit (asks while jobs run)',
   'help_config_line':
-    'Config: enter opens details, s selects the highlighted file as the write target. Only guided Use writes via --path; install, uninstall, upgrade, tasks and expert commands ignore it.',
+    'Config: n creates mise.toml in the current directory after confirmation; existing files are never overwritten. Enter opens details, s selects the write target. Only guided Use writes via --path; install, uninstall, upgrade, tasks and expert commands ignore it.',
   'help_scroll_hint': ['j/k|scroll', 'Esc/q|back', ':|settings', 'L|language'],
 
   // ---- Detail ----
@@ -392,6 +395,7 @@ const EN = {
     'L|language',
   ],
   'config_hint': [
+    'n|create local',
     'j/k|move',
     'h/l|panels',
     '1 2 3|panels',
@@ -678,7 +682,10 @@ const ZH = {
   'config_copied': '已复制 {path} 到剪贴板',
   'config_copy_failed': '复制到剪贴板失败：{error}',
   'no_config_selected': '未选择配置文件',
-  'config_actions': 's: 设为目标  e: 编辑  y: 复制',
+  'config_actions': 'n: 新建本地  s: 设为目标  e: 编辑  y: 复制',
+  'config_project_create': '在当前目录创建 {path}/mise.toml 并设为写入目标？\n仅限当前目录；不会覆盖已有文件，不修改全局配置。',
+  'config_project_created': '已创建本地配置：{path}',
+  'config_project_failed': '无法创建本地配置：{error}',
   'Duration': '耗时',
   'No task selected': '未选择任务',
   '(waiting for output...)': '(等待输出中...)',
@@ -732,11 +739,11 @@ const ZH = {
   'help_tools_line': '工具：a 添加，A 自定义，i 安装，I 使用版本，D 卸载（确认），F2 配置目标',
   'help_updates_line': '更新：space 标记，u 升级已标记或当前项，U 升级全部过滤结果',
   'help_more_actions':
-    '任务/环境/系统：R 运行   配置：s 设为目标，e 编辑，y 复制   控制台：D 清理已完成',
+    '任务/环境/系统：R 运行   配置：n 新建本地，s 设为目标，e 编辑，y 复制   控制台：D 清理已完成',
   'help_global_line':
     '/ 搜索   ? 帮助   m 页面命令   M 专家命令   : 设置   L 语言   q / ctrl+c 退出（有任务时确认）',
   'help_config_line':
-    '配置：enter 打开详情，s 将所选文件设为写入目标。仅引导使用版本操作经 --path 写入；安装、卸载、升级、任务与专家命令不使用该目标。',
+    '配置：n 确认后在当前目录创建 mise.toml，不覆盖已有文件。enter 打开详情，s 设为写入目标。仅引导使用版本操作经 --path 写入；安装、卸载、升级、任务与专家命令不使用该目标。',
   'help_scroll_hint': ['j/k|滚动', 'Esc/q|返回', ':|设置', 'L|语言'],
 
   // ---- Detail ----
@@ -854,6 +861,7 @@ const ZH = {
     'L|语言',
   ],
   'config_hint': [
+    'n|新建本地',
     'j/k|移动',
     'h/l|面板',
     '1 2 3|面板',
