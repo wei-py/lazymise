@@ -106,6 +106,8 @@ Guided writes now select a concrete configuration file before choosing tools. `1
 
 ## Configuration target
 
+In Config with List focus, press `n` to create `mise.toml` in the current working directory. `Enter/y` confirms; `Esc/n/q` cancels. Confirmation immediately creates an empty `[tools]` table, selects the file in the list, and makes it the write target. Existing files, directories, and symlinks are never overwritten. Global configuration is unchanged; subsequent guided Use operations write to this local file.
+
 On startup, lazymise selects the discovered global configuration file by default. The path follows `MISE_GLOBAL_CONFIG_FILE`, then `MISE_CONFIG_DIR`, then `XDG_CONFIG_HOME/mise`, otherwise `~/.config/mise/config.toml`. If no valid global file is found, the target remains unselected; startup never creates a file. Press `F2`, or press `Enter` on a file in the Config list, to choose another target. Refresh preserves your manual choice. Selecting or cancelling never writes a file, and the target is not persisted.
 
 - Discovered project and global files are listed together; the first file is never implicitly selected.
