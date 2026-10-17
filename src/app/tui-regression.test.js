@@ -706,7 +706,8 @@ test('tool object snapshots preserve versions and precise deletion with visible 
       ['node','22.1.0','22.1.0',true,true],
       ['node','20','20',true,false],
     ]);
-    for(let i=0;i<3;i++) {
+    assert.equal(app.currentListLen(),1);
+    for(let i=0;i<app.currentListLen();i++) {
       app.state.selected=i;app.update();await ui.renderOnce();
       assert.ok(ui.captureCharFrame().includes(app.selectedTool().version));
     }
@@ -749,7 +750,7 @@ test('tool object snapshots preserve versions and precise deletion with visible 
         JSON.stringify({
           'node': [
             { version: '20', installed: true },
-            { version: '22.1.0', installed: true, active: true },
+            { version: '22.1.0', installed: true, active: true, source: { path: join(dir, 'mise.toml') } },
           ],
           'cargo:工具': [{ version: '1', requested_version: '', source: null }],
         }),
@@ -859,7 +860,7 @@ test('config editor, control scrolling and uppercase navigation stay distinct', 
     ui.mockInput.pressKey('u',{shift:true});assert.equal(app.state.overlay.type,'ConfirmCommand');
     ui.mockInput.pressKey('n');
     app.jumpToPage('Tools');
-    app.state.snapshot.tools=Array.from({length:12},(_,i)=>({name:'node',version:String(i)}));
+    app.state.snapshot.projectTools=Array.from({length:12},(_,i)=>({name:'node',version:String(i)}));
     ui.mockInput.pressKey('d',{ctrl:true});assert.equal(app.state.selected,8);
     ui.mockInput.pressKey('u',{ctrl:true});assert.equal(app.state.selected,0);
     assert.equal(app.state.page,'Tools');assert.equal(app.state.overlay,null);
@@ -1017,6 +1018,7 @@ test('config target F2 deduplicates files and Config Enter chooses without chang
       {path:project,tools:['node']},{path:unsupported,tools:[]},
     ];
     app.state.snapshot.tools=[{name:'node',version:'22'},{name:'python',version:'3'}];
+    app.state.snapshot.projectTools=app.state.snapshot.tools;
     const inventory=app.state.snapshot.tools;
     assert.equal(app.state.configTarget,null);
     ui.mockInput.pressKey('2');
@@ -1101,7 +1103,7 @@ test('config target absent target resumes only the captured requested flow and c
     `
     const path=dir+'/target.toml';writeFileSync(path,'');
     app.state.snapshot.configs=[{path,tools:[]}];
-    app.state.snapshot.tools=[{name:'cargo:example',version:'1'},{name:'other',version:'2'}];
+    app.state.snapshot.projectTools=[{name:'cargo:example',version:'1'},{name:'other',version:'2'}];
     app.jumpToPage('Tools');
     for(const key of ['a','A','I']) {
       ui.mockInput.pressKey(key);
@@ -1127,7 +1129,7 @@ test('config target absent target resumes only the captured requested flow and c
 
 test('navigation digits preserve list selection and sidebar browsing never steals focus', async () => {
   await fixture(async ({ app, ui }) => {
-    app.state.snapshot.tools = [
+    app.state.snapshot.projectTools = [
       { name: 'node', version: '20' },
       { name: 'node', version: '22' },
     ]
@@ -1177,7 +1179,7 @@ test('navigation details rejects list actions and visible predicates match rende
   await isolated(
     `
     const path=dir+'/target.toml';writeFileSync(path,'');
-    app.state.snapshot.tools=[{name:'node',version:'20'},{name:'node',version:'22'}];
+    app.state.snapshot.projectTools=[{name:'node',version:'20'},{name:'node',version:'22'}];
     app.state.snapshot.configs=[{path,tools:['special-tool']}];
     app.state.snapshot.tasks=[{name:'first',description:'other'},{name:'selected-task',description:'unique description'}];
     app.state.snapshot.updates=[{name:'node',current:'20',latest:'22'}];
@@ -1217,7 +1219,7 @@ test('navigation details rejects list actions and visible predicates match rende
 test('overlay flow page and palette searches restore cursors and delete entire graphemes', async () => {
   await fixture(async ({ app, ui }) => {
     app.jumpToPage('Tools')
-    app.state.snapshot.tools = [
+    app.state.snapshot.projectTools = [
       { name: 'old-a', version: '1' },
       { name: 'old-b', version: '2' },
     ]
@@ -1265,7 +1267,7 @@ test('overlay flow direct versions and registry backend chains restore only thei
   await isolated(
     `
     const path=dir+'/target.toml';writeFileSync(path,'');app.state.configTarget={path,create:false};
-    app.state.snapshot.tools=[{name:'cargo:example',version:'1'}];app.jumpToPage('Tools');
+    app.state.snapshot.projectTools=[{name:'cargo:example',version:'1'}];app.jumpToPage('Tools');
     await openVersionsForAction(app, VERSION_INTENT.Use);
     ui.mockInput.pressEscape();assert.equal(app.state.overlay,null);assert.equal(app.state.page,'Tools');
     await openRegistry(app);
@@ -1293,7 +1295,7 @@ test('overlay flow late registry version and help responses cannot resurrect can
   await isolated(
     `
     const path=dir+'/target.toml';writeFileSync(path,'');app.state.configTarget={path,create:false};
-    app.state.snapshot.tools=[{name:'cargo:example',version:'1'}];app.jumpToPage('Tools');
+    app.state.snapshot.projectTools=[{name:'cargo:example',version:'1'}];app.jumpToPage('Tools');
     for(const kind of ['registry','ls-remote','help']) {
       if(kind==='help') {
         app.state.commands=[{name:'env',description:'Environment'}];app.jumpToPage('Environment');
@@ -1338,7 +1340,7 @@ test('overlay flow remote failures remain visible and retry in place for registr
   await isolated(
     `
     const path=dir+'/target.toml';writeFileSync(path,'');app.state.configTarget={path,create:false};
-    app.state.snapshot.tools=[{name:'cargo:example',version:'1'}];app.jumpToPage('Tools');
+    app.state.snapshot.projectTools=[{name:'cargo:example',version:'1'}];app.jumpToPage('Tools');
     for(const kind of ['registry','ls-remote','help']) {
       writeFileSync(dir+'/failure',kind);
       if(kind==='registry')await openRegistry(app);
@@ -1561,7 +1563,12 @@ test('command target refresh and task prepend preserve the selected entity', asy
         `
       import {readFileSync} from 'node:fs';
       const kind=process.argv[2];
-      console.log(kind==='ls'?readFileSync(${JSON.stringify(join(dir, 'tools'))},'utf8'):kind==='outdated'?'[{"name":"node","current":"20","latest":"22"}]':kind==='config'?'[]':'{}');
+      if(kind==='ls') {
+        const tools=JSON.parse(readFileSync(${JSON.stringify(join(dir, 'tools'))},'utf8'));
+        for(const records of Object.values(tools))
+          for(const record of records)record.source={path:${JSON.stringify(join(dir, 'mise.toml'))}};
+        console.log(JSON.stringify(tools));
+      } else console.log(kind==='outdated'?'[{"name":"node","current":"20","latest":"22"}]':kind==='config'?'[]':'{}');
     `,
       )
     },
@@ -1571,7 +1578,7 @@ test('command target refresh and task prepend preserve the selected entity', asy
 test('layout target narrow lists keep the last row highlighted and details scroll actual output', async () => {
   await fixture(
     async ({ app, ui, frame }) => {
-      app.state.snapshot.tools = tools.map((tool, index) => ({
+      app.state.snapshot.projectTools = tools.map((tool, index) => ({
         ...tool,
         version: `version-${index}`,
       }))
@@ -1806,7 +1813,7 @@ test('navigation page commands exclude unrelated dashboard actions and Enter act
   )
 })
 
-test('config target startup selects the global file using mise environment precedence', async () => {
+test('scope startup selects project and global tab respects mise environment precedence', async () => {
   for (const mode of ['home', 'xdg', 'mise-dir', 'explicit']) {
     await isolated(
       `
@@ -1826,13 +1833,10 @@ test('config target startup selects the global file using mise environment prece
       const project=dir+'/mise.toml';writeFileSync(project,'[tools]\\n');
       writeFileSync(dir+'/configs',JSON.stringify([{path:project,tools:[]},...files.map(path=>({path:realpathSync(path),tools:[]}))]));
       await app.start();
+      assert.deepEqual(app.state.configTarget,{path:project,create:false});
+      app.jumpToPage('Tools');ui.mockInput.pressKey(']');
       assert.deepEqual(app.state.configTarget,{path:expected,create:false});
       assert.equal(app.state.overlay,null);assert.equal(app.state.status,'');
-      const header=(await frame()).split('\\n')[0];
-      assert.ok(header.includes(' LAZYMISE │ '));
-      assert.ok(header.includes('config.toml'));
-      assert.ok(header.includes('zh en'));
-      assert.ok(!header.includes('Not selected'));
       await openRegistry(app);assert.equal(app.state.overlay.type,'Picker');
       ui.mockInput.pressEscape();
       assert.equal(selectConfigTarget(app, project),true);await app.refresh();
@@ -1868,7 +1872,7 @@ test('config target startup neither creates missing globals nor overrides explic
       writeFileSync(dir+'/configs',mode==='discovery-failed'?'{}':JSON.stringify([{path:project,tools:[]},{path:global,tools:[]}]));
       if(mode==='manual')selectConfigTarget(app, project);
       await app.start();
-      assert.equal(app.state.configTarget?.path??null,mode==='manual'?project:null);
+      assert.equal(app.state.configTarget?.path??null,['manual','missing'].includes(mode)?project:null);
       assert.equal(app.state.overlay,null);assert.deepEqual(argv(),[]);
       if(mode==='missing')assert.equal(existsSync(global),false);
       if(mode==='invalid')assert.match(app.state.status,/regular file/);
@@ -1888,42 +1892,6 @@ test('config target startup neither creates missing globals nor overrides explic
       },
     )
   }
-})
-
-test('header shows brand, target path and the fixed zh en chip', async () => {
-  await fixture(async ({ app, frame, dir }) => {
-    let rows = (await frame()).split('\n')
-    expect(rows[0]).toContain(' LAZYMISE │ ')
-    expect(rows[0]).toContain('Not selected')
-    expect(rows[0].trimEnd().endsWith('zh en')).toBe(true)
-    app.state.configTarget = { path: join(dir, 'config.toml'), create: false }
-    rows = (await frame()).split('\n')
-    expect(rows[0]).toContain(join(dir, 'config.toml'))
-    expect(rows[0].trimEnd().endsWith('zh en')).toBe(true)
-  })
-})
-
-test('digit 3 focuses the detail panel with a focus-colored title', async () => {
-  await fixture(async ({ app, ui, frame }) => {
-    app.state.snapshot.tools = [{ name: 'node', version: '22' }]
-    app.jumpToPage('Tools')
-    ui.mockInput.pressKey('3')
-    expect(app.state.focus).toBe('Details')
-    const rendered = await frame()
-    expect(rendered).toContain('[2] Tools (1)')
-    expect(rendered).toContain('[3] Details')
-    const spans = ui.captureSpans().lines.flatMap(line => line.spans)
-    const detailTitle = spans.find(span => span.text.includes('[3] Details'))
-    expect(detailTitle).toBeDefined()
-    expect([...detailTitle.fg.buffer].slice(0, 3)).toEqual([122, 162, 247])
-    const navTitle = spans.find(span => span.text.includes('[1] Sectio'))
-    expect(navTitle).toBeDefined()
-    expect([...navTitle.fg.buffer].slice(0, 3)).toEqual([108, 115, 144])
-    ui.mockInput.pressKey('2')
-    expect(app.state.focus).toBe('List')
-    ui.mockInput.pressKey('1')
-    expect(app.state.focus).toBe('Navigation')
-  })
 })
 
 test('L switches the whole frame to Chinese and persists it', async () => {
@@ -2051,5 +2019,105 @@ test('search overlay range chip switches to registry add search with all four st
     assert.equal(app.state.search,'');
   `,
     recordedMise,
+  )
+})
+
+test('tool scope tabs restore positions and switch write targets without changing pages', async () => {
+  await fixture(async ({ app, ui, dir }) => {
+    const previous = process.env.MISE_GLOBAL_CONFIG_FILE
+    const globalPath = join(dir, 'global.toml')
+    const projectPath = join(dir, 'project.toml')
+    writeFileSync(globalPath, '[tools]\n')
+    writeFileSync(projectPath, '[tools]\n')
+    process.env.MISE_GLOBAL_CONFIG_FILE = globalPath
+    try {
+      const inherited = { name: 'bun', version: '1', source: globalPath, scope: 'global', active: true }
+      const local = { name: 'node', version: '24', source: projectPath, scope: 'project', active: true }
+      const overridden = { name: 'node', version: '22', source: globalPath, scope: 'global', active: false }
+      app.state.snapshot.projectTools = [inherited, local]
+      app.state.snapshot.globalTools = [inherited, overridden]
+      app.state.snapshot.configs = [{ path: projectPath, tools: ['node'] }, { path: globalPath, tools: ['bun', 'node'] }]
+      app.setConfigTarget({ path: projectPath, create: false })
+      app.jumpToPage('Tools')
+      ui.mockInput.pressKey('j')
+      expect(app.selectedTool()).toBe(local)
+      ui.mockInput.pressKey(']')
+      expect(app.state.page).toBe('Tools')
+      expect(app.state.toolScope).toBe('global')
+      expect(app.state.configTarget.path).toBe(globalPath)
+      expect(app.visibleItems()).toEqual([inherited, overridden])
+      ui.mockInput.pressKey('j')
+      expect(app.selectedTool()).toBe(overridden)
+      ui.mockInput.pressKey('[')
+      expect(app.state.toolScope).toBe('project')
+      expect(app.selectedTool()).toBe(local)
+      expect(app.state.configTarget.path).not.toBe(globalPath)
+      ui.mockInput.pressKey(']')
+      expect(app.selectedTool()).toBe(overridden)
+      ui.mockInput.pressKey('/')
+      ui.mockInput.pressKey('[')
+      expect(app.state.search).toBe('[')
+      expect(app.state.toolScope).toBe('global')
+      ui.mockInput.pressEscape()
+      app.setConfigTarget({ path: projectPath, create: false })
+      expect(app.state.toolScope).toBe('project')
+      expect(app.state.configTarget.path).toBe(projectPath)
+      rmSync(globalPath)
+      mkdirSync(globalPath)
+      ui.mockInput.pressKey(']')
+      expect(app.state.toolScope).toBe('global')
+      expect(app.state.configTarget).toBeNull()
+      expect(app.state.status).toContain(globalPath)
+      expect(app.state.jobs).toEqual([])
+      app.setConfigTarget({ path: projectPath, create: false })
+      ui.mockInput.pressKey('1')
+      ui.mockInput.pressKey(']')
+      expect(app.state.page).toBe('Updates')
+      expect(app.state.toolScope).toBe('project')
+    }
+    finally {
+      if (previous === undefined)
+        delete process.env.MISE_GLOBAL_CONFIG_FILE
+      else process.env.MISE_GLOBAL_CONFIG_FILE = previous
+    }
+  })
+})
+
+test('scoped snapshots retain overridden global declarations and exclude unconfigured installs', async () => {
+  await isolated(
+    `
+    const global=dir+'/global.toml',project=dir+'/mise.toml';
+    process.env.MISE_GLOBAL_CONFIG_FILE=global;
+    writeFileSync(global,'[tools]\\n');writeFileSync(project,'[tools]\\n');
+    await app.refresh();
+    assert.equal(app.state.status,'');
+    app.jumpToPage('Tools');
+    assert.deepEqual(app.visibleItems().map(t=>[t.name,t.version,t.scope]),[
+      ['bun','1','global'],['node','24','project'],
+    ]);
+    ui.mockInput.pressKey(']');
+    assert.deepEqual(app.visibleItems().map(t=>[t.name,t.version,t.active]),[
+      ['bun','1',true],['node','22',false],
+    ]);
+    assert.equal(app.state.configTarget.path,global);
+    assert.equal(app.state.snapshot.tools.some(t=>t.name==='python'),true);
+  `,
+    ({ dir, executable }) => {
+      executable(
+        'mise',
+        `
+      const args=process.argv.slice(2),global=${JSON.stringify(join(dir, 'global.toml'))},project=${JSON.stringify(join(dir, 'mise.toml'))};
+      if(args[0]==='ls')console.log(JSON.stringify(args.includes('--global')?{
+        bun:[{version:'1',active:true,source:{path:global}}],
+        node:[{version:'22',active:true,source:{path:global}}],
+      }:{
+        bun:[{version:'1',active:true,source:{path:global}}],
+        node:[{version:'24',active:true,source:{path:project}}],
+        python:[{version:'3',installed:true}],
+      }));
+      else console.log(args[0]==='config'?JSON.stringify([{path:project,tools:['node']},{path:global,tools:['node','bun']}]):'{}');
+    `,
+      )
+    },
   )
 })

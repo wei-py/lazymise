@@ -81,13 +81,21 @@ export function box(
 
   const fill = border.horizontal.repeat(Math.max(0, innerWidth - stringWidth(label)))
   const frame = [
-    titleColor === frameColor
-      ? `${border.topLeft}${label}${fill}${border.topRight}`
-      : [
+    content.titleParts
+      ? [
           fg(frameColor)(border.topLeft),
-          fg(titleColor)(label),
+          fg(titleColor)(' '),
+          ...content.titleParts.map(part => fg(part.color || titleColor)(part.text)),
+          fg(titleColor)(' '),
           fg(frameColor)(`${fill}${border.topRight}`),
-        ],
+        ]
+      : titleColor === frameColor
+        ? `${border.topLeft}${label}${fill}${border.topRight}`
+        : [
+            fg(frameColor)(border.topLeft),
+            fg(titleColor)(label),
+            fg(frameColor)(`${fill}${border.topRight}`),
+          ],
     ...Array.from(
       { length: innerHeight },
       () => `${border.vertical}${' '.repeat(innerWidth)}${border.vertical}`,
@@ -122,13 +130,35 @@ export function panel(id, left, top, width, height, content, s) {
   // Clip the label so `[n]` and `(count)` survive narrow panels.
   const room = Math.max(1, width - 4 - stringWidth(prefix) - stringWidth(suffix))
   const title = `${prefix}${clipColumns(content.title || '', room)}${suffix}`
+  let titleParts
+  if (content.titleTabs) {
+    const tabs = content.titleTabs
+    const fullWidth = tabs.reduce((size, tab) => size + stringWidth(tab.text), 0) + 3 * (tabs.length - 1)
+    const visibleTabs = fullWidth <= room ? tabs : tabs.filter(tab => tab.active)
+    titleParts = [{ text: prefix }]
+    for (const [index, tab] of visibleTabs.entries()) {
+      if (index)
+        titleParts.push({ text: ' | ', color: COLORS.border })
+      titleParts.push({
+        text: clipColumns(tab.text, room),
+        color: tab.active ? COLORS.focus : COLORS.muted,
+      })
+    }
+    titleParts.push({ text: suffix })
+    // The title string supplies display width; parts supply actual terminal colors.
+  }
   return box(
     id,
     left,
     top,
     width,
     height,
-    { ...content, title, titleColor: focused ? COLORS.focus : COLORS.muted },
+    {
+      ...content,
+      title: titleParts ? titleParts.map(part => part.text).join('') : title,
+      titleParts: width >= 4 + stringWidth(prefix) + stringWidth(suffix) + 1 ? titleParts : undefined,
+      titleColor: focused ? COLORS.focus : COLORS.muted,
+    },
     focused ? COLORS.focus : COLORS.border,
   )
 }

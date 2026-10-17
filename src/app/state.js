@@ -32,6 +32,11 @@ export const FOCUS = {
   Details: 'Details',
 }
 
+export const TOOL_SCOPE = {
+  Project: 'project',
+  Global: 'global',
+}
+
 export const VERSION_INTENT = {
   Add: 'Add',
   Use: 'Use',

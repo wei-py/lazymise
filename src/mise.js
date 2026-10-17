@@ -1,6 +1,6 @@
-import { lstatSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { accessSync, constants, lstatSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, extname, resolve } from 'node:path'
+import { basename, dirname, extname, parse, relative, resolve } from 'node:path'
 import { $ } from 'bun'
 
 async function miseJson(args) {
@@ -30,25 +30,59 @@ async function miseText(args) {
 
 /** Load complete snapshot: tools, updates, tasks, configs. */
 export async function loadSnapshot() {
-  const [version, tools, updates, tasks, configs] = await Promise.all([
+  const [version, tools, globalEntries, updates, tasks, configs] = await Promise.all([
     miseText(['--version']),
     loadTools(),
+    loadGlobalTools(),
     loadUpdates(),
     loadTasks(),
     loadConfigs(),
   ])
+  const globalPath = canonicalConfigPath(globalConfigPath())
+  const projectPaths = new Set(configs
+    .map(config => canonicalConfigPath(config.path))
+    .filter(path => path !== globalPath))
+  for (const tool of tools) {
+    const source = tool.source ? canonicalConfigPath(tool.source) : null
+    tool.scope = source === globalPath ? 'global' : projectPaths.has(source) ? 'project' : 'other'
+  }
+  const projectTools = tools.filter(tool => tool.source)
+  const activeVersions = new Set(tools.filter(tool => tool.active).map(tool => `${tool.name}\0${tool.version}`))
+  const globalTools = globalEntries.filter(tool =>
+    tool.source && canonicalConfigPath(tool.source) === globalPath,
+  )
+  for (const tool of globalTools) {
+    tool.scope = 'global'
+    tool.active = activeVersions.has(`${tool.name}\0${tool.version}`)
+  }
   return {
     mise_version: version.split(' ')[0] || '—',
     tools,
+    projectTools,
+    globalTools,
     updates,
     tasks,
     configs,
   }
 }
 
-async function loadTools() {
+async function loadGlobalTools() {
+  const path = globalConfigPath()
   try {
-    const entries = JSON.parse(await miseText(['ls', '--json']))
+    validateConfigTarget(path)
+  }
+  catch (error) {
+    if (error.code === 'ENOENT')
+      return []
+    throw error
+  }
+  // --global filters the effective toolset, so leave the project before querying.
+  return loadTools(['ls', '--global', '--json', '--cd', parse(path).root])
+}
+
+async function loadTools(args = ['ls', '--json']) {
+  try {
+    const entries = JSON.parse(await miseText(args))
     const isObject = value =>
       value !== null && typeof value === 'object' && !Array.isArray(value)
     if (!isObject(entries))
@@ -92,7 +126,7 @@ async function loadTools() {
   catch (error) {
     const stderr = error.stderr?.toString().trim()
     throw new Error(
-      `mise ls --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`,
+      `mise ${args.join(' ')}: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`,
       { cause: error },
     )
   }
@@ -191,25 +225,49 @@ export function validateConfigTarget(path, allowCreate = false) {
   return { path: absolutePath, create: false }
 }
 
-/** Pick mise's global write file, never the first discovered project config. */
-export function defaultConfigTarget(configs) {
+function canonicalConfigPath(path) {
+  try {
+    return realpathSync(path)
+  }
+  catch {
+    return resolve(path)
+  }
+}
+
+/** Resolve mise's global write path even when it does not exist yet. */
+export function globalConfigPath() {
   const configDir
     = process.env.MISE_CONFIG_DIR
       || resolve(process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config'), 'mise')
-  const path = resolve(process.env.MISE_GLOBAL_CONFIG_FILE || resolve(configDir, 'config.toml'))
-  let target
-  try {
-    target = validateConfigTarget(path)
+  return resolve(process.env.MISE_GLOBAL_CONFIG_FILE || resolve(configDir, 'config.toml'))
+}
+
+/** Select the nearest writable applicable project TOML without creating files. */
+export function projectConfigTarget(configs) {
+  const cwd = canonicalConfigPath(process.cwd())
+  const globalPath = canonicalConfigPath(globalConfigPath())
+  const candidates = []
+  for (const config of configs) {
+    const path = resolve(config.path)
+    const canonicalPath = canonicalConfigPath(path)
+    if (canonicalPath === globalPath)
+      continue
+    const directory = dirname(canonicalPath)
+    const projectDirectory = ['.mise', '.config'].includes(basename(directory)) ? dirname(directory) : directory
+    const distance = relative(projectDirectory, cwd)
+    if (distance === '..' || distance.startsWith('../') || resolve(projectDirectory, distance) !== cwd)
+      continue
+    candidates.push({ path, distance: distance ? distance.split('/').length : 0 })
   }
-  catch (error) {
-    if (error.code === 'ENOENT')
-      return null
-    throw error
+  candidates.sort((a, b) => a.distance - b.distance)
+  for (const candidate of candidates) {
+    if (extname(candidate.path) !== '.toml' || basename(candidate.path) === 'rust-toolchain.toml')
+      continue
+    const target = validateConfigTarget(candidate.path)
+    accessSync(target.path, constants.W_OK)
+    return target
   }
-  const canonicalPath = realpathSync(path)
-  return configs.some(config => config.path === path || config.path === canonicalPath)
-    ? target
-    : null
+  return validateConfigTarget(resolve('mise.toml'), true)
 }
 
 /** Fetch mise registry (all known tools with backends). */

@@ -24,6 +24,7 @@ export function pageName(page, language) {
 export function listContent(s, items, capacity, width) {
   const { page, snapshot, search, selected, language } = s
   let title = ''
+  let titleTabs
   let renderItem = null
 
   switch (page) {
@@ -48,10 +49,17 @@ export function listContent(s, items, capacity, width) {
     }
     case 'Tools': {
       title = t(language, 'Tools')
+      titleTabs = [
+        { text: t(language, 'tool_scope_project'), active: s.toolScope !== 'global' },
+        { text: t(language, 'tool_scope_global'), active: s.toolScope === 'global' },
+      ]
       renderItem = (tool) => {
         const suffix = `${clipColumns(tool.version, 12)}${!tool.active ? ` ${t(language, '(inactive)')}` : ''}`
         const nameWidth = Math.max(1, width - stringWidth(suffix) - 4)
-        return `${tool.installed ? '●' : '○'} ${padColumns(tool.name, nameWidth)}  ${suffix}`
+        const inherited = s.toolScope !== 'global' && tool.scope === 'global'
+          ? `[${t(language, 'tool_inherited')}] `
+          : ''
+        return `${tool.installed ? '●' : '○'} ${padColumns(`${inherited}${tool.name}`, nameWidth)}  ${suffix}`
       }
       break
     }
@@ -104,7 +112,7 @@ export function listContent(s, items, capacity, width) {
         : getEmptyMessage(page, language),
     )
   }
-  return { title, count: items.length, ...content }
+  return { title, titleTabs, count: items.length, ...content }
 }
 
 export function getEmptyMessage(page, language) {
@@ -148,9 +156,11 @@ export function detailContent(s, items) {
           `${t(language, 'detail_tool')}: ${tool.name}`,
           `${t(language, 'detail_version')}: ${tool.version}`,
           `${t(language, 'detail_requested')}: ${tool.requested || '—'}`,
+          tool.scope ? `${t(language, 'detail_origin')}: ${t(language, `tool_scope_${tool.scope}`)}` : '',
           tool.source ? `${t(language, 'detail_source')}: ${tool.source}` : '',
           `${t(language, 'detail_installed')}: ${tool.installed ? t(language, 'installed') : t(language, 'not_installed')}`,
           `${t(language, 'detail_active')}: ${tool.active ? t(language, 'active') : t(language, 'inactive')}`,
+          targetHint(s),
           '',
           t(language, 'detail_tools_hint'),
         ].filter(Boolean)

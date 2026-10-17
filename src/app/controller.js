@@ -6,8 +6,10 @@ import {
   commandBelongsToPage,
   commandCatalog,
   createProjectConfigFile,
-  defaultConfigTarget,
+  globalConfigPath,
   loadSnapshot,
+  projectConfigTarget,
+  validateConfigTarget,
 } from '../mise.js'
 import { copySelectedConfig, executeBackground, executeCommand } from './execution.js'
 import {
@@ -35,6 +37,7 @@ import {
   moveIndex,
   PAGE,
   PAGE_ORDER,
+  TOOL_SCOPE,
 } from './state.js'
 
 export class Application {
@@ -52,9 +55,14 @@ export class Application {
       page: PAGE.Dashboard,
       focus: FOCUS.Navigation,
       configTarget: null,
+      toolScope: TOOL_SCOPE.Project,
+      toolScopePositions: {
+        project: { selected: 0, detailScroll: 0, search: '' },
+        global: { selected: 0, detailScroll: 0, search: '' },
+      },
       language: 'en',
       theme: DEFAULT_THEME,
-      snapshot: { mise_version: '—', tools: [], updates: [], tasks: [], configs: [] },
+      snapshot: { mise_version: '—', tools: [], projectTools: [], globalTools: [], updates: [], tasks: [], configs: [] },
       selected: 0,
       detailScroll: 0,
       selectedUpdates: new Set(),
@@ -109,7 +117,7 @@ export class Application {
     const refreshed = await this.refresh()
     if (refreshed && !this.state.configTarget && !this.state.overlay) {
       try {
-        this.state.configTarget = defaultConfigTarget(this.state.snapshot.configs)
+        this.state.configTarget = projectConfigTarget(this.state.snapshot.configs)
         this.update()
       }
       catch (error) {
@@ -209,10 +217,13 @@ export class Application {
         this.update()
         return
       case '[':
-        this.changePage(-1)
-        return
       case ']':
-        this.changePage(1)
+        if (this.state.page === PAGE.Tools && this.state.focus === FOCUS.List)
+          this.switchToolScope()
+        else if (this.state.focus === FOCUS.Navigation)
+          this.changePage(name === '[' ? -1 : 1, FOCUS.Navigation)
+        else if (this.state.page !== PAGE.Tools)
+          this.changePage(name === '[' ? -1 : 1)
         return
       case 'h':
       case 'left':
@@ -446,7 +457,7 @@ export class Application {
       onConfirm: () => {
         try {
           const target = createProjectConfigFile()
-          this.state.configTarget = target
+          this.setConfigTarget(target)
           if (!this.state.snapshot.configs.some(config => config.path === target.path))
             this.state.snapshot.configs.push({ path: target.path, tools: [] })
           this.projectConfigMissing = false
@@ -471,6 +482,43 @@ export class Application {
     const config = this.selectedConfig()
     if (config)
       await executeCommand(this, ['edit', config.path], true)
+  }
+
+  setConfigTarget(target) {
+    const scope = target.path === globalConfigPath() ? TOOL_SCOPE.Global : TOOL_SCOPE.Project
+    if (scope !== this.state.toolScope)
+      this.restoreToolScope(scope)
+    this.state.configTarget = target
+    this.clampSelection()
+  }
+
+  restoreToolScope(scope) {
+    if (this.state.page === PAGE.Tools) {
+      const { selected, detailScroll, search } = this.state
+      this.state.toolScopePositions[this.state.toolScope] = { selected, detailScroll, search }
+      Object.assign(this.state, this.state.toolScopePositions[scope])
+    }
+    this.state.toolScope = scope
+    this.clampSelection()
+  }
+
+  switchToolScope() {
+    const scope = this.state.toolScope === TOOL_SCOPE.Project ? TOOL_SCOPE.Global : TOOL_SCOPE.Project
+    this.restoreToolScope(scope)
+    // Clear the old target before resolving: failures must never write to the other scope.
+    this.state.configTarget = null
+    try {
+      this.state.configTarget = scope === TOOL_SCOPE.Global
+        ? validateConfigTarget(globalConfigPath(), true)
+        : projectConfigTarget(this.state.snapshot.configs)
+      this.state.status = ''
+    }
+    catch (error) {
+      this.state.status = t(this.state.language, 'config_target_invalid', {
+        error: error.message || String(error),
+      })
+    }
+    this.update()
   }
 
   jumpToPage(page, focus = FOCUS.List) {
@@ -560,10 +608,12 @@ export class Application {
     switch (page) {
       case PAGE.Dashboard:
         return []
-      case PAGE.Tools:
-        return search
-          ? snapshot.tools.filter(item => matches(item.name, item.version))
-          : snapshot.tools
+      case PAGE.Tools: {
+        const tools = this.state.toolScope === TOOL_SCOPE.Global
+          ? snapshot.globalTools
+          : snapshot.projectTools
+        return search ? tools.filter(item => matches(item.name, item.version)) : tools
+      }
       case PAGE.Updates:
         return search
           ? snapshot.updates.filter(item => matches(item.name, item.current))

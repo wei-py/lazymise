@@ -278,7 +278,7 @@ export function selectConfigTarget(app, path = app.selectedConfig()?.path) {
   if (!path)
     return false
   try {
-    app.state.configTarget = validateConfigTarget(path)
+    app.setConfigTarget(validateConfigTarget(path))
     app.state.status = t(app.state.language, 'config_target_selected', {
       path: app.state.configTarget.path,
     })
@@ -295,7 +295,7 @@ export function selectConfigTarget(app, path = app.selectedConfig()?.path) {
 }
 
 export function acceptConfigTarget(app, ov, target) {
-  app.state.configTarget = target
+  app.setConfigTarget(target)
   app.state.status = t(app.state.language, 'config_target_selected', { path: target.path })
   app.state.overlay = ov.parent
   if (ov.parent && !ov.parent.loadError)

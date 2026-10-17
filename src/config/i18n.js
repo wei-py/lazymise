@@ -23,7 +23,12 @@ const EN = {
   'focus_nav': 'Navigation',
   'focus_list': 'List',
   'focus_detail': 'Details',
-  'no_tools': 'No tools installed',
+  'no_tools': 'No configured tools',
+  'tool_scope_project': 'Project',
+  'tool_scope_global': 'Global',
+  'tool_scope_other': 'Other',
+  'tool_inherited': 'global',
+  'detail_origin': 'Configuration scope',
   'no_updates': 'All tools up to date',
   'no_tasks': 'No tasks defined',
   'no_configs': 'No config files found',
@@ -265,12 +270,12 @@ const EN = {
 
   // ---- Help overlay ----
   'help_panels':
-    'tab / shift+tab: cycle panels   1 / 2 / 3: jump to Navigation / List / Details   [/]: previous / next page',
+    'tab / shift+tab: cycle panels   1 / 2 / 3: jump to Navigation / List / Details   [/]: previous / next page (Navigation; other pages)',
   'help_move':
     'j/k / ↑/↓: move or scroll   h/l / ←/→: switch panel   g / G / home / end: first / last   pgup / pgdn / ctrl+d / ctrl+u: half page',
   'help_enter_esc': 'enter: open details   esc: back one level   r: refresh   x: abort newest job',
   'help_tools_line':
-    'Tools: a add, A custom tool, i install, I use version, D uninstall (confirm), F2 config target',
+    'Tools List: [/] Project / Global tabs (default write target follows tab; F2 selects a target). Project includes inherited global tools; Global shows global declarations, even if overridden. Details: [/] does nothing. a add, A custom tool, i install, I use version, D uninstall (confirm). Tabs do not activate a terminal environment.',
   'help_updates_line': 'Updates: space mark, u upgrade marked/current, U upgrade all filtered',
   'help_more_actions':
     'Tasks / Env / System: R run   Config: n create local, s set target, e edit, y copy   Console: D clear finished',
@@ -319,6 +324,7 @@ const EN = {
     'L|language',
   ],
   'tools_hint': [
+    '[/]|Project/Global',
     'j/k|move',
     'h/l|panels',
     '1 2 3|panels',
@@ -329,7 +335,6 @@ const EN = {
     '?|help',
     'r|refresh',
     'x|abort',
-    '[/]|page',
     'a|add',
     'A|custom',
     'i|install',
@@ -518,7 +523,12 @@ const ZH = {
   'focus_nav': '导航',
   'focus_list': '列表',
   'focus_detail': '详情',
-  'no_tools': '未安装工具',
+  'no_tools': '未配置工具',
+  'tool_scope_project': '项目',
+  'tool_scope_global': '全局',
+  'tool_scope_other': '其他',
+  'tool_inherited': '继承全局',
+  'detail_origin': '配置作用域',
   'no_updates': '所有工具已是最新',
   'no_tasks': '未定义任务',
   'no_configs': '未找到配置文件',
@@ -732,11 +742,11 @@ const ZH = {
   'picker_filter_label': '[{filter}] 搜索：{query}',
 
   // ---- Help overlay ----
-  'help_panels': 'tab / shift+tab：循环面板   1 / 2 / 3：直达 导航 / 列表 / 详情   [/]：上一页 / 下一页',
+  'help_panels': 'tab / shift+tab：循环面板   1 / 2 / 3：直达 导航 / 列表 / 详情   [/]：上一页 / 下一页（导航焦点及其他页面）',
   'help_move':
     'j/k / ↑/↓：移动或滚动   h/l / ←/→：切换面板   g / G / home / end：首/尾   pgup / pgdn / ctrl+d / ctrl+u：半页',
   'help_enter_esc': 'enter：打开详情   esc：逐级返回   r：刷新   x：中止最近任务',
-  'help_tools_line': '工具：a 添加，A 自定义，i 安装，I 使用版本，D 卸载（确认），F2 配置目标',
+  'help_tools_line': '工具列表：[/] 切换项目/全局标签（默认写入目标跟随标签；F2 手动选择）。项目包含继承的全局工具；全局显示原始全局声明，即使被项目覆盖。详情中 [/] 无操作。a 添加，A 自定义，i 安装，I 使用版本，D 卸载（确认）。标签不会激活终端环境。',
   'help_updates_line': '更新：space 标记，u 升级已标记或当前项，U 升级全部过滤结果',
   'help_more_actions':
     '任务/环境/系统：R 运行   配置：n 新建本地，s 设为目标，e 编辑，y 复制   控制台：D 清理已完成',
@@ -785,6 +795,7 @@ const ZH = {
     'L|语言',
   ],
   'tools_hint': [
+    '[/]|项目/全局',
     'j/k|移动',
     'h/l|面板',
     '1 2 3|面板',
@@ -795,7 +806,6 @@ const ZH = {
     '?|帮助',
     'r|刷新',
     'x|中止',
-    '[/]|翻页',
     'a|添加',
     'A|自定义',
     'i|安装',
