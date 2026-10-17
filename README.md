@@ -65,7 +65,7 @@ Options:
 | `Tab` / `Shift-Tab`         | Cycle panel focus; in the registry picker, cycle every discovered backend prefix; in command arguments, focus the scrollable help |
 | `h` `j` `k` `l` or arrows   | Move focus, selection, details, or the focused command help viewport                                                              |
 | `1` / `2` / `3`             | Focus the Navigation / List / Details panel                                                                                       |
-| `[` / `]`                   | Previous / next page                                                                                                              |
+| `[` / `]`                   | Tools List: Project / Global tabs; Navigation and other pages: previous / next page; Tools Details: no action                       |
 | `L`                          | Switch 中文 / English                                                                                                             |
 | `x`                          | Abort the newest running background job                                                                                           |
 | `F2`                        | Select the exact configuration file for subsequent guided Use operations                                                          |
@@ -102,13 +102,15 @@ Built-in help (`?`) supports `j/k` or arrows, `PageUp`/`PageDown`, and `Home`/`E
 
 ### TUI fixes
 
-Guided writes now select a concrete configuration file before choosing tools. `1`/`2`/`3` focus panels, `[`/`]` switch pages, Enter opens Details, and nested dialogs preserve their parent input and selection. Language saving remains explicit. Native dialogs retain centered borders, Unicode-aware clipping, visible focus, and local hints; long output and paths can be scrolled.
+Guided writes select a concrete configuration file before choosing tools. `1`/`2`/`3` focus panels; `[`/`]` switch Project/Global tabs in the Tools list, or pages with Navigation focus and on other pages. Enter opens Details, and nested dialogs preserve their parent input and selection. Native dialogs retain centered borders, Unicode-aware clipping, visible focus, and local hints; long output and paths can be scrolled.
 
 ## Configuration target
 
 In Config with List focus, press `n` to create `mise.toml` in the current working directory. `Enter/y` confirms; `Esc/n/q` cancels. Confirmation immediately creates an empty `[tools]` table, selects the file in the list, and makes it the write target. Existing files, directories, and symlinks are never overwritten. Global configuration is unchanged; subsequent guided Use operations write to this local file.
 
-On startup, lazymise selects the discovered global configuration file by default. The path follows `MISE_GLOBAL_CONFIG_FILE`, then `MISE_CONFIG_DIR`, then `XDG_CONFIG_HOME/mise`, otherwise `~/.config/mise/config.toml`. If no valid global file is found, the target remains unselected; startup never creates a file. Press `F2`, or press `Enter` on a file in the Config list, to choose another target. Refresh preserves your manual choice. Selecting or cancelling never writes a file, and the target is not persisted.
+Tools opens on the **Project** tab: effective configured project tools, including inherited global declarations (marked `global`). **Global** shows actual global configuration declarations, even when a project overrides them. Neither tab includes installed tools that no configuration references. With Tools List focused, `[`/`]` cycles tabs; the active tab is highlighted in the panel title. Narrow panels retain the active tab. Switching tabs does not activate or change the terminal environment.
+
+The default write target follows the tab: Project uses the project configuration, Global uses the global configuration. Global paths follow `MISE_GLOBAL_CONFIG_FILE`, then `MISE_CONFIG_DIR`, then `XDG_CONFIG_HOME/mise`, otherwise `~/.config/mise/config.toml`. Startup never creates a file. Press `F2`, or `s` on a file in Config, to select an exact target; a manual selection also synchronizes the Tools tab to its scope. Refresh preserves a manual choice. Selecting or cancelling never writes a file, and the target is not persisted.
 
 - Discovered project and global files are listed together; the first file is never implicitly selected.
 - Enter an absolute or project-relative `.toml` path, or choose the new project `mise.toml` action. Explicit `~/` expands to your home; `$VAR` is literal.
@@ -117,7 +119,7 @@ On startup, lazymise selects the discovered global configuration file by default
 - Use and Custom Tool execute `mise use --yes --path <absolute-file> <exact-spec>`. Every submission revalidates the target; a removed existing file requires explicit creation approval again.
 - `F2` inside a loaded write picker or Custom Tool changes the target without losing input. Loading pickers ask you to wait. Install-only pickers and expert commands do not intercept it.
 
-The target does **not** filter the complete Tools inventory or control Install, Uninstall, Upgrade, tasks, or expert-command arguments. Selecting a different target cannot redirect a command already submitted. The former `p/G` scope shortcuts and Custom Tool's hidden Tab target switch are removed.
+The Tools tab controls which configured declarations are shown and the default guided write target. It does not redirect Install, Uninstall, Upgrade, tasks, or expert-command arguments, nor a command already submitted. The former `p/G` shortcuts and Custom Tool's hidden Tab target switch are removed.
 
 Search starts explicitly with `/`. While editing, letters including `p/G/j/k/q` are text; Enter accepts the query without selecting a result, Esc restores the previous query and cursor, and Ctrl+u clears it. Outside text input, Esc/q returns one dialog level and Ctrl+c cancels the entire flow. Long modal paths/errors show a `PgUp/PgDn` position hint.
 
