@@ -1,11 +1,30 @@
+[tools]
+node = "26.7.0"
+pnpm = "12.5.1"
+
 [tasks.lint]
 description = "Lint all JS sources"
-run = "bun run lint"
+run = "pnpm lint"
 
 [tasks.dev]
 description = "Run lazymise from source"
-run = "bun src/main.js"
+run = "pnpm dev"
 
 [tasks.check]
 description = "Run all checks"
-depends = [ "lint" ]
+depends = [
+  "lint",
+  "test"
+]
+
+[tasks.test]
+description = "Run the Node test suite"
+run = "pnpm test"
+
+[tasks.build]
+description = "Build the host-native standalone release"
+run = "pnpm build"
+
+[tasks."smoke:release"]
+description = "Exercise the standalone archive in an isolated fixture"
+run = "pnpm smoke:release"

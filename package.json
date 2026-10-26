@@ -1,16 +1,22 @@
 {
   "name": "lazymise",
   "type": "module",
-  "version": "1.1.1",
+  "version": "2.0.1",
   "private": true,
-  "packageManager": "bun@1.4.2",
+  "packageManager": "pnpm@12.5.1",
   "bin": {
     "lazymise": "./src/main.js"
   },
+  "engines": {
+    "node": ">=26.4.0"
+  },
   "scripts": {
-    "dev": "bun src/main.js",
+    "build": "node scripts/build.js",
+    "smoke:release": "node scripts/smoke-release.js",
+    "dev": "node --experimental-ffi src/main.js",
+    "test": "node --experimental-ffi --no-warnings --test",
     "lint": "eslint .",
-    "format": "npx oxfmt@latest . && eslint . --fix",
+    "format": "pnpm dlx oxfmt@latest . && eslint . --fix",
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
@@ -19,7 +25,10 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "9.5.1",
-    "@types/bun": "1.4.2",
-    "eslint": "10.10.0"
+    "@lydell/node-pty": "1.2.0-beta.15",
+    "@types/node": "26.6.5",
+    "esbuild": "0.28.2",
+    "eslint": "10.10.0",
+    "expect": "30.5.2"
   }
 }
