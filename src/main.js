@@ -1,7 +1,8 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { resolve } from 'node:path'
 import process from 'node:process'
 import { runCli } from './cli.js'
+import { cancelProcesses, startProcess } from './process.js'
 
 export function normalizeKey(key) {
   let name = key.name === 'return' ? 'enter' : key.name
@@ -22,7 +23,22 @@ export function normalizeKey(key) {
 }
 
 export async function main(args = process.argv.slice(2)) {
-  const cliResult = await runCli(args)
+  let cliSignal
+  const cliAbort = new AbortController()
+  const interruptCli = () => { cliSignal = 130; cliAbort.abort(); void cancelProcesses() }
+  const terminateCli = () => { cliSignal = 143; cliAbort.abort(); void cancelProcesses() }
+  process.on('SIGINT', interruptCli)
+  process.on('SIGTERM', terminateCli)
+  let cliResult
+  try {
+    cliResult = await runCli(args, { signal: cliAbort.signal })
+  }
+  finally {
+    process.off('SIGINT', interruptCli)
+    process.off('SIGTERM', terminateCli)
+  }
+  if (cliSignal)
+    return cliSignal
   if (cliResult !== null)
     return cliResult
   if (args.length > 1 || args.some(arg => arg.startsWith('-'))) {
@@ -37,6 +53,25 @@ export async function main(args = process.argv.slice(2)) {
     )
     return 1
   }
+  if (!process.execArgv.includes('--experimental-ffi')) {
+    const child = startProcess(process.execPath, [
+      '--experimental-ffi',
+      ...process.execArgv,
+      import.meta.filename,
+      ...args,
+    ], { inherit: true })
+    const interrupt = () => child.child.kill('SIGINT')
+    const terminate = () => child.child.kill('SIGTERM')
+    process.on('SIGINT', interrupt)
+    process.on('SIGTERM', terminate)
+    try {
+      return (await child.completion).exitCode
+    }
+    finally {
+      process.off('SIGINT', interrupt)
+      process.off('SIGTERM', terminate)
+    }
+  }
 
   const projectDir = resolve(args[0] || process.cwd())
   process.chdir(projectDir)
@@ -45,6 +80,7 @@ export async function main(args = process.argv.slice(2)) {
   let app
   let cleanup
   let resolveExit
+  let handoff
   const done = new Promise((resolveDone) => {
     resolveExit = resolveDone
   })
@@ -53,12 +89,11 @@ export async function main(args = process.argv.slice(2)) {
     if (cleanup)
       return cleanup
     cleanup = (async () => {
+      const results = await Promise.allSettled([app?.close?.(), cancelProcesses()])
       renderer?.destroy()
-      try {
-        await app?.close?.()
-      }
-      catch {
+      if (results.some(result => result.status === 'rejected')) {
         code = code || 1
+        message ||= 'Some background tasks could not be stopped cleanly.'
       }
       process.off('SIGINT', onSigint)
       process.off('SIGTERM', onSigterm)
@@ -111,6 +146,18 @@ export async function main(args = process.argv.slice(2)) {
 
     const view = createView(renderer)
     app = new Application(view, code => finish(code))
+    app.handoff = async (commandArgs) => {
+      renderer.suspend()
+      try {
+        handoff = startProcess('mise', commandArgs, { inherit: true })
+        return await handoff.completion
+      }
+      finally {
+        handoff = null
+        if (!cleanup)
+          renderer.resume()
+      }
+    }
     renderer.on('resize', () => app.update())
     renderer.on('render:error', onFailure)
     renderer.on('handler:error', onFailure)
@@ -136,5 +183,5 @@ export async function main(args = process.argv.slice(2)) {
 
 if (import.meta.main) {
   const code = await main()
-  process.exit(code)
+  process.exitCode = code
 }

@@ -1,7 +1,9 @@
-import { spawnSync } from 'node:child_process'
+import { stat } from 'node:fs/promises'
 import process from 'node:process'
 import packageJson from '../package.json' with { type: 'json' }
 import { loadSnapshot, registry } from './mise.js'
+import { runProcess } from './process.js'
+import { updateRelease } from './release.js'
 
 const HELP = `lazymise — mise TUI manager
 
@@ -29,11 +31,20 @@ Commands:
 `
 
 /** Handle CLI arguments. Returns null to launch TUI, or an exit code. */
-export async function runCli(args) {
+export async function runCli(args, { signal } = {}) {
   if (!args.length)
     return null
 
   const command = args[0]
+  if (args.length === 1 && !command.startsWith('-')) {
+    try {
+      if ((await stat(command)).isDirectory())
+        return null
+    }
+    catch {
+      // A non-directory argument remains an ordinary mise subcommand.
+    }
+  }
 
   if (command === '--help' || command === '-h') {
     process.stdout.write(HELP)
@@ -50,9 +61,9 @@ export async function runCli(args) {
       case 'ls':
         return await cmdList(args.slice(1))
       case 'current':
-        return await passthrough(['current'])
+        return await passthrough(['current', ...args.slice(1)])
       case 'outdated':
-        return await passthrough(['outdated'])
+        return await passthrough(['outdated', ...args.slice(1)])
       case 'registry':
         return await cmdRegistry(args.slice(1))
       case 'install':
@@ -72,11 +83,11 @@ export async function runCli(args) {
           ? await passthrough(['use', '--yes', ...args.slice(1)])
           : usage('use <spec>')
       case 'tasks':
-        return await passthrough(['tasks'])
+        return await passthrough(['tasks', ...args.slice(1)])
       case 'help':
         return await passthrough(['help', ...args.slice(1)])
       case 'update':
-        return await cmdUpdate()
+        return await cmdUpdate(signal)
       default:
         // Unknown command — check if it matches a mise subcommand
         return await passthrough([command, ...args.slice(1)])
@@ -94,8 +105,8 @@ function usage(msg) {
 }
 
 async function passthrough(args) {
-  const result = spawnSync('mise', args, { stdio: 'inherit' })
-  return result.status
+  const result = await runProcess('mise', args, { inherit: true })
+  return result.exitCode
 }
 
 async function cmdList(_args) {
@@ -139,7 +150,9 @@ async function cmdRegistry(args) {
   }
 }
 
-async function cmdUpdate() {
-  const result = await passthrough(['install', '--yes', '--global', 'cargo:lazymise@latest'])
-  return result
+async function cmdUpdate(signal) {
+  const message = await updateRelease({ signal })
+  signal?.throwIfAborted()
+  process.stdout.write(`${message}\n`)
+  return 0
 }

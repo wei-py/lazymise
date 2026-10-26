@@ -1,11 +1,11 @@
 import { accessSync, constants, lstatSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, extname, parse, relative, resolve } from 'node:path'
-import { $ } from 'bun'
+import { runProcess } from './process.js'
 
 async function miseJson(args) {
-  const result = await $`mise ${args}`.quiet()
-  const out = result.stdout.toString().trim()
+  const result = await runProcess('mise', args)
+  const out = result.stdout.trim()
   if (result.exitCode !== 0) {
     const err = result.stderr.toString().trim()
     throw new Error(`mise ${args.join(' ')} failed: ${err || out}`)
@@ -19,8 +19,8 @@ async function miseJson(args) {
 }
 
 async function miseText(args) {
-  const result = await $`mise ${args}`.quiet()
-  const out = result.stdout.toString().trim()
+  const result = await runProcess('mise', args)
+  const out = result.stdout.trim()
   if (result.exitCode !== 0) {
     const err = result.stderr.toString().trim()
     throw new Error(`mise ${args.join(' ')} failed: ${err || out}`)
@@ -317,10 +317,10 @@ export async function remoteVersions(tool) {
 export async function execute(args) {
   const command = `mise ${args.join(' ')}`
   try {
-    const result = await $`mise ${args}`.quiet()
+    const result = await runProcess('mise', args)
     return {
       command,
-      output: result.stdout.toString(),
+      output: [result.stdout, result.stderr].filter(Boolean).join('\n'),
       success: result.exitCode === 0,
     }
   }
