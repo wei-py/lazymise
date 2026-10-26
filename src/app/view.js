@@ -1,16 +1,16 @@
 import { homedir } from 'node:os'
-import { fg, StyledText, TextRenderable } from '@opentui/core'
+import { fg, TextRenderable } from '@opentui/core'
 import stringWidth from 'string-width'
 import { JOB_GLYPH } from '../../vendor/lazy-kit/jobs.js'
 import { t } from '../config/i18n.js'
-import { clipColumns, FOCUS, layoutMode } from './state.js'
+import { clipColumns, FOCUS, GROUPS, layoutMode } from './state.js'
 import { COLORS, setTheme } from './view/colors.js'
 import { pageActionsHint } from './view/hints.js'
 import { renderOverlay } from './view/overlay.js'
-import { detailViewport, listContent, navContent } from './view/panels.js'
-import { box, panel, renderBox, showNode } from './view/primitives.js'
+import { detailViewport, listContent } from './view/panels.js'
+import { panel, renderBox, showNode } from './view/primitives.js'
 
-const PANEL_IDS = ['nav', 'list', 'detail']
+const PANEL_IDS = [...GROUPS.map(group => group.id), 'detail']
 const NODE_IDS = [
   'header',
   'headerInner',
@@ -47,213 +47,113 @@ export function createView(renderer) {
     const { width, height } = renderer
     const { language } = s
     setTheme(s.theme)
-    const items = app.visibleItems()
-    let detailMaxScroll = 0
-    let listRows = 0
+    for (const node of Object.values(nodes)) node.visible = false
     const mode = layoutMode(width, height)
-
-    // Job rows drive the dynamic status box height, which drives the panels.
+    let detailMaxScroll = null
+    let listCapacity = null
+    let detailCapacity = null
     const jobs = s.jobs || []
     const activeJobs = jobs.filter(job => job.state === 'queued' || job.state === 'running')
     const settledJobs = jobs.filter(job => job.state !== 'queued' && job.state !== 'running')
-    const shownJobs = [
-      ...activeJobs,
-      ...settledJobs.slice(Math.max(0, settledJobs.length - 1)),
-    ].slice(0, 3)
-    const statusHeight = 4 + shownJobs.length
+    const shownJobs = [...activeJobs, ...settledJobs.slice(-1)].slice(0, height >= 24 ? 2 : 1)
+    const statusHeight = 1 + shownJobs.length
     const available = Math.max(0, height - statusHeight - 2)
 
-    // Hide all nodes first
-    for (const node of Object.values(nodes)) node.visible = false
-
     if (mode === 'small') {
-      showNode(
-        nodes,
-        'header',
-        0,
-        0,
-        width,
-        1,
-        [t(language, 'Terminal too small')],
-        COLORS.warning,
-      )
-      showNode(
-        nodes,
-        'keys',
-        0,
-        height - 1,
-        width,
-        1,
-        [t(language, 'Resize, or q/Ctrl-c to quit')],
-        COLORS.muted,
-      )
+      showNode(nodes, 'header', 0, 0, width, 1, [t(language, 'Terminal too small')], COLORS.warning)
+      showNode(nodes, 'keys', 0, Math.max(0, height - 1), width, 1, [t(language, 'small_hint')], COLORS.muted)
+      const overlayMaxScroll = s.overlay ? renderOverlay(nodes, s, app, width, height) : null
       renderer.requestRender()
-      return { width, height, detailMaxScroll }
+      return { width, height, detailMaxScroll, overlayMaxScroll, listCapacity }
     }
 
-    // Header: one borderless line, right-aligned zh/en language chip.
-    const prefix = ' LAZYMISE │ '
-    const contextPath = s.configTarget
-      ? headerPath(s.configTarget.path)
-      : t(language, 'config_target_none')
-    const chipPlain = 'zh en'
-    const budget = Math.max(3, width - prefix.length - chipPlain.length - 1)
-    const shownPath
-      = contextPath.length > budget ? `${contextPath.slice(0, budget - 1)}…` : contextPath
-    const pad = ' '.repeat(
-      Math.max(1, width - prefix.length - shownPath.length - chipPlain.length),
-    )
-    const headerNode = nodes.header
-    headerNode.visible = true
-    Object.assign(headerNode, { left: 0, top: 0, width, height: 1, bg: COLORS.background })
-    headerNode.content = new StyledText([
-      fg(COLORS.text)(' '),
-      fg(COLORS.focus)('LAZYMISE'),
-      fg(COLORS.border)(' │ '),
-      fg(COLORS.repo)(shownPath),
-      fg(COLORS.text)(pad),
-      fg(s.language === 'zh' ? COLORS.focus : COLORS.muted)('zh'),
-      fg(COLORS.border)(' '),
-      fg(s.language === 'en' ? COLORS.focus : COLORS.muted)('en'),
-    ])
+    const contextPath = s.configTarget ? headerPath(s.configTarget.path) : t(language, 'config_target_none')
+    showNode(nodes, 'header', 0, 0, width, 1, [` LAZYMISE │ ${contextPath} │ ${language}`], COLORS.focus)
 
-    if (mode === 'dual') {
-      const navWidth = Math.floor((width - 2) / 5)
-      const listWidth = Math.floor((width - navWidth - 2) / 2)
-      const detailLeft = navWidth + listWidth + 2
-      const detailWidth = width - detailLeft
-      const panelHeight = available
-      const detailHeight = panelHeight
-      listRows = Math.max(0, panelHeight - 2)
-
-      const navResult = panel(
-        'nav',
-        1,
-        1,
-        navWidth,
-        panelHeight,
-        navContent(s, panelHeight - 2),
-        s,
-      )
-      renderBox(nodes, 'nav', navResult)
-
-      const listResult = panel(
-        'list',
-        navWidth + 1,
-        1,
-        listWidth,
-        panelHeight,
-        listContent(s, items, panelHeight - 2, listWidth - 3),
-        s,
-      )
-      renderBox(nodes, 'list', listResult)
-
-      const detail = detailViewport(s, items, detailWidth - 3, detailHeight - 2)
+    const renderGroup = (index, left, top, panelWidth, panelHeight) => {
+      const group = GROUPS[index]
+      const page = s.groupTabs[index]
+      const position = app.pageState(page)
+      const rows = Math.max(0, panelHeight - 2)
+      const context = [
+        ...(page === 'Tools' ? [t(language, position.toolScope === 'global' ? 'tool_scope_global' : 'tool_scope_project')] : []),
+        ...(position.search ? [`/ ${position.search}`] : []),
+      ].join(' · ')
+      const contextRows = context && rows > 1 ? 1 : 0
+      const content = listContent(position, app.visibleItems(position), rows - contextRows, panelWidth - 3)
+      if (contextRows) {
+        content.lines.unshift(context)
+        if (content.selected >= 0)
+          content.selected++
+      }
+      content.titleTabs = group.pages.map(tab => ({ text: t(language, tab), active: tab === page }))
+      renderBox(nodes, group.id, panel(group.id, left, top, panelWidth, panelHeight, content, s))
+      if (page !== s.page)
+        s.pagePositions[page].listStart = position.listStart
+      if (index === s.focusedGroup)
+        listCapacity = Math.max(1, rows - contextRows)
+    }
+    const renderDetail = (left, top, panelWidth, panelHeight) => {
+      detailCapacity = Math.max(0, panelHeight - 2)
+      const detail = detailViewport(s, app.visibleItems(), panelWidth - 3, detailCapacity)
       detailMaxScroll = detail.maxScroll
-      const detailResult = panel('detail', detailLeft, 1, detailWidth, detailHeight, detail, s)
-      renderBox(nodes, 'detail', detailResult)
+      renderBox(nodes, 'detail', panel('detail', left, top, panelWidth, panelHeight, detail, s))
+    }
+
+    if (mode === 'wide') {
+      const leftWidth = Math.min(46, Math.max(34, Math.floor(width * 0.36)))
+      const baseHeight = Math.floor(available / GROUPS.length)
+      let top = 1
+      for (let index = 0; index < GROUPS.length; index++) {
+        const groupHeight = baseHeight + (index === s.focusedGroup ? available % GROUPS.length : 0)
+        renderGroup(index, 0, top, leftWidth, groupHeight)
+        top += groupHeight
+      }
+      renderDetail(leftWidth, 1, width - leftWidth, available)
+    }
+    else if (mode === 'focused') {
+      const leftWidth = Math.max(30, Math.floor(width * 0.4))
+      renderGroup(s.focusedGroup, 0, 1, leftWidth, available)
+      renderDetail(leftWidth, 1, width - leftWidth, available)
     }
     else {
-      // Single mode: stacked layout
-      const topHeight = Math.floor(available * 0.55)
-      const bottomHeight = available - topHeight
-
-      const focusedPane = s.focus
-      const topId = focusedPane === FOCUS.Navigation ? 'nav' : 'list'
-      const bottomId = focusedPane === FOCUS.Details ? 'detail' : topId === 'nav' ? 'list' : 'nav'
-      listRows = Math.max(0, (topId === 'list' ? topHeight : bottomHeight) - 2)
-      const detail = detailViewport(s, items, width - 5, bottomHeight - 2)
-      detailMaxScroll = detail.maxScroll
-      const contentFor = (id, capacity) =>
-        id === 'nav'
-          ? navContent(s, capacity)
-          : id === 'list'
-            ? listContent(s, items, capacity, width - 5)
-            : detail
-
-      const topResult = panel(
-        topId,
-        1,
-        1,
-        width - 2,
-        topHeight,
-        contentFor(topId, topHeight - 2),
-        s,
-      )
-      renderBox(nodes, topId, topResult)
-
-      const bottomResult = panel(
-        bottomId,
-        1,
-        1 + topHeight,
-        width - 2,
-        bottomHeight,
-        contentFor(bottomId, bottomHeight - 2),
-        s,
-      )
-      renderBox(nodes, bottomId, bottomResult)
+      const groupHeight = Math.max(4, Math.floor(available * 0.43))
+      renderGroup(s.focusedGroup, 0, 1, width, groupHeight)
+      renderDetail(0, 1 + groupHeight, width, available - groupHeight)
     }
 
-    // Status: counts row + job rows + log row, growing with visible jobs.
     const status = renderStatus(s, app, shownJobs, activeJobs.length)
-    renderBox(
-      nodes,
-      'status',
-      box(
-        'status',
-        0,
-        height - statusHeight - 1,
-        width,
-        statusHeight,
-        {
-          title: t(language, 'Status'),
-          lines: status.lines,
-          colors: status.colors,
-          titleColor: activeJobs.length ? COLORS.warning : COLORS.muted,
-        },
-        activeJobs.length ? COLORS.warning : COLORS.border,
-        COLORS.text,
-        COLORS.background,
-      ),
-    )
+    showNode(nodes, 'statusInner', 0, height - statusHeight - 1, width, statusHeight, status.lines.slice(0, statusHeight), COLORS.text, COLORS.background, status.colors)
 
-    // Key hints: prefix + colored chips (`key · desc`), clipped at the right edge.
-    const keysNode = nodes.keys
-    keysNode.visible = true
-    Object.assign(keysNode, {
-      left: 0,
-      top: height - 1,
-      width,
-      height: 1,
-      fg: COLORS.muted,
-      bg: COLORS.background,
-    })
-    const chipParts = [{ text: `${t(language, s.page)}: `, color: COLORS.focus }]
-    for (const [index, chip] of pageActionsHint(s).entries()) {
-      if (index)
-        chipParts.push({ text: '  ·  ', color: COLORS.border })
-      chipParts.push({ text: chip.key, color: COLORS.focus })
+    const hintState = s.focus === FOCUS.Details ? s : app.pageState(s.groupTabs[s.focusedGroup])
+    const parts = s.overlay
+      ? []
+      : [
+          { text: '1–4/0 ', color: COLORS.focus },
+          { text: `${t(language, 'hint_focus')}  `, color: COLORS.muted },
+          { text: '[] ', color: COLORS.focus },
+          { text: `${t(language, 'hint_tabs')}  `, color: COLORS.muted },
+          { text: '? ', color: COLORS.focus },
+          { text: `${t(language, 'hint_help')}  `, color: COLORS.muted },
+        ]
+    for (const chip of pageActionsHint(hintState)) {
+      parts.push({ text: `${chip.key} `, color: COLORS.focus })
       if (chip.desc)
-        chipParts.push({ text: ` ${chip.desc}`, color: COLORS.muted })
+        parts.push({ text: `${chip.desc}  `, color: COLORS.muted })
     }
-    const chipSegments = []
-    let chipColumns = 0
-    for (const part of chipParts) {
+    const segments = []
+    let columns = 0
+    for (const part of parts) {
       const size = stringWidth(part.text)
-      if (chipColumns + size > width) {
-        chipSegments.push(fg(part.color)(clipColumns(part.text, Math.max(0, width - chipColumns))))
+      segments.push(fg(part.color)(clipColumns(part.text, Math.max(0, width - columns))))
+      columns += size
+      if (columns >= width)
         break
-      }
-      chipSegments.push(fg(part.color)(part.text))
-      chipColumns += size
     }
-    keysNode.content = new StyledText(chipSegments)
-
-    // Overlay rendering
+    showNode(nodes, 'keys', 0, height - 1, width, 1, [segments], COLORS.muted)
     const overlayMaxScroll = s.overlay ? renderOverlay(nodes, s, app, width, height) : null
-
     renderer.requestRender()
-    return { width, height, detailMaxScroll, overlayMaxScroll, listCapacity: listRows }
+    return { width, height, detailMaxScroll, overlayMaxScroll, listCapacity, detailCapacity }
   }
 }
 

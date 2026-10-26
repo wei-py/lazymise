@@ -3,10 +3,10 @@ import { FOCUS } from '../state.js'
 
 export function pageActionsHint(s) {
   const lang = s.language
+  if (s.overlay?.type === 'Help')
+    return []
   if (s.overlay)
     return overlayHint(s.overlay, lang)
-  if (s.focus === FOCUS.Navigation)
-    return hintSegments(lang, 'navigation_hint')
   if (s.focus === FOCUS.Details)
     return hintSegments(lang, 'details_hint')
   switch (s.page) {

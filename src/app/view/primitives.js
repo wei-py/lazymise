@@ -1,12 +1,10 @@
 import { relative } from 'node:path'
 import { fg, StyledText } from '@opentui/core'
 import stringWidth from 'string-width'
-import { clipColumns } from '../state.js'
+import { clipColumns, FOCUS, GROUPS } from '../state.js'
 import { COLORS } from './colors.js'
 
 const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
-
-const PANEL_FOCUS = { nav: 'Navigation', list: 'List', detail: 'Details' }
 
 export function padColumns(value, width) {
   const clipped = clipColumns(value, width)
@@ -37,12 +35,15 @@ export function wrap(value, width) {
 }
 
 /** Keep the selected row visible and retain its position. */
-export function windowContent(lines, index, size) {
+export function windowContent(lines, index, size, position) {
   const count = Math.max(0, size)
-  const start = Math.min(
-    Math.max(0, index - Math.floor(count / 2)),
-    Math.max(0, lines.length - count),
-  )
+  let start = Math.max(0, Math.min(position?.listStart || 0, Math.max(0, lines.length - count)))
+  if (count > 0 && index < start)
+    start = Math.max(0, index)
+  else if (count > 0 && index >= start + count)
+    start = Math.min(Math.max(0, lines.length - count), index - count + 1)
+  if (position && count > 0)
+    position.listStart = start
   return {
     lines: lines.slice(start, start + count),
     start,
@@ -120,12 +121,11 @@ export function box(
   }
 }
 
-const PANEL_INDEX = { nav: 1, list: 2, detail: 3 }
-
 /** Render a bordered panel titled `[n] Title (count)` with focus-aware colors. */
 export function panel(id, left, top, width, height, content, s) {
-  const focused = PANEL_FOCUS[id] === s.focus
-  const prefix = `[${PANEL_INDEX[id]}] `
+  const groupIndex = GROUPS.findIndex(group => group.id === id)
+  const focused = (id === 'detail' ? FOCUS.Details : id) === s.focus
+  const prefix = `[${id === 'detail' ? 0 : groupIndex + 1}] `
   const suffix = ` (${content.count ?? 0})`
   // Clip the label so `[n]` and `(count)` survive narrow panels.
   const room = Math.max(1, width - 4 - stringWidth(prefix) - stringWidth(suffix))

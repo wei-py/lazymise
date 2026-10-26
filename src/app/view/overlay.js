@@ -1,6 +1,6 @@
 import { fg } from '@opentui/core'
 import stringWidth from 'string-width'
-import { hintLine, LANGUAGES, t } from '../../config/i18n.js'
+import { helpSections, hintLine, LANGUAGES, t } from '../../config/i18n.js'
 import { configTargetItems } from '../overlays.js'
 import { clipColumns, filterCommands, filterRegistryTools } from '../state.js'
 import { COLORS } from './colors.js'
@@ -12,18 +12,45 @@ import {
   displayPath,
   inputLine,
   itemLine,
+  padColumns,
   renderBox,
   scrollContent,
+  showNode,
   windowContent,
   wrap,
 } from './primitives.js'
 
+function wrapDescription(value, width) {
+  const lines = []
+  let line = ''
+  for (const word of value.split(/\s+/)) {
+    const next = line ? `${line} ${word}` : word
+    if (stringWidth(next) <= width) {
+      line = next
+      continue
+    }
+    if (line)
+      lines.push(line)
+    const pieces = wrap(word, width)
+    lines.push(...pieces.slice(0, -1))
+    line = pieces.at(-1)
+  }
+  lines.push(line)
+  return lines
+}
+
 export function renderOverlay(nodes, s, app, width, height) {
   const { overlay, language } = s
-  const modalWidth = Math.min(width - 8, 80)
-  const modalHeight = height - 4
-  const contentWidth = modalWidth - 4
-  const capacity = Math.max(0, modalHeight - 3)
+  if (width < 6 || height < 4) {
+    showNode(nodes, 'modalInner', 0, 0, width, height, [t(language, overlay.type === 'Help' ? 'help_title_full' : 'confirm_command_title'), 'Esc/Enter'], COLORS.focus, COLORS.surface)
+    return null
+  }
+  const modalWidth = Math.min(Math.max(6, width - (width >= 80 ? 8 : 2)), 80)
+  const modalHeight = Math.max(3, height - 2)
+  const contentWidth = Math.max(1, modalWidth - 4)
+  const confirming = ['ConfirmCommand', 'ConfirmDelete', 'Quit'].includes(overlay.type)
+  const capacity = Math.max(0, modalHeight - 3 - (confirming ? 1 : 0))
+  overlay.pageSize = Math.max(1, capacity)
   let title = ''
   let lines = []
   let selected = -1
@@ -32,22 +59,18 @@ export function renderOverlay(nodes, s, app, width, height) {
 
   switch (overlay.type) {
     case 'Help': {
-      title = t(language, 'help_title_full')
-      const keys = [
-        'help_panels',
-        'help_move',
-        'help_enter_esc',
-        'help_tools_line',
-        'help_updates_line',
-        'help_more_actions',
-        'help_global_line',
-        'help_config_line',
-      ]
-      const content = scrollContent(
-        keys.flatMap(key => wrap(t(language, key), contentWidth)),
-        overlay.scroll,
-        capacity,
-      )
+      const sections = helpSections(language)
+      const category = overlay.category || 0
+      const section = sections[category]
+      title = `${t(language, 'help_title')} · ${section.title} [${category + 1}/${sections.length}]`
+      const keyWidth = Math.min(18, Math.floor(contentWidth * 0.4))
+      const rows = section.rows.flatMap(([key, description]) => {
+        if (contentWidth < 34)
+          return [key, ...wrapDescription(description, Math.max(1, contentWidth - 2)).map(line => `  ${line}`)]
+        return wrapDescription(description, Math.max(1, contentWidth - keyWidth - 2)).map((line, index) =>
+          `${padColumns(index ? '' : key, keyWidth)}  ${line}`)
+      })
+      const content = scrollContent(rows, overlay.scroll, capacity)
       lines = content.lines
       counter = content.counter
       maxScroll = content.maxScroll
@@ -87,6 +110,7 @@ export function renderOverlay(nodes, s, app, width, height) {
             ),
             overlay.selected,
             Math.max(0, capacity - 2),
+            overlay,
           )
           lines = [chip, input, ...content.lines]
           selected = content.selected < 0 ? -1 : content.selected + 2
@@ -139,7 +163,7 @@ export function renderOverlay(nodes, s, app, width, height) {
         const unsupported = item.supported ? '' : ` [${t(language, 'config_target_unsupported')}]`
         return `${marker} ${clipPath(displayPath(item.path), contentWidth - 2 - stringWidth(unsupported))}${unsupported}`
       })
-      const content = windowContent(entries, overlay.selected, capacity - visibleHeader.length)
+      const content = windowContent(entries, overlay.selected, capacity - visibleHeader.length, overlay)
       lines = [...visibleHeader, ...content.lines]
       selected = content.selected < 0 ? -1 : visibleHeader.length + content.selected
       counter = pathContent.maxScroll
@@ -174,6 +198,7 @@ export function renderOverlay(nodes, s, app, width, height) {
         items.map(item => itemLine(item.name, item.description, contentWidth)),
         overlay.selected,
         Math.max(0, capacity - 1),
+        overlay,
       )
       lines = [query, ...(items.length ? content.lines : [t(language, 'no_matching_commands')])]
       selected = content.selected < 0 ? -1 : content.selected + 1
@@ -270,7 +295,18 @@ export function renderOverlay(nodes, s, app, width, height) {
     .slice(0, capacity)
     .map(line => (typeof line === 'string' ? clipColumns(line, contentWidth) : line))
   // Hints remain on the bottom row even while long content scrolls above them.
-  lines.push(clipColumns(hintLine(overlayHint(overlay, language)), contentWidth))
+  if (confirming) {
+    lines.push([
+      fg(overlay.confirmSelected ? COLORS.muted : COLORS.focus)(`${overlay.confirmSelected ? '  ' : '▸ '}${t(language, 'confirm_cancel')}   `),
+      fg(overlay.confirmSelected ? COLORS.focus : COLORS.muted)(`${overlay.confirmSelected ? '▸ ' : '  '}${t(language, 'confirm_accept')}`),
+    ])
+  }
+  const chips = overlayHint(overlay, language)
+  const fullHint = hintLine(chips)
+  const hint = stringWidth(fullHint) <= contentWidth
+    ? fullHint
+    : chips.map(chip => chip.key).join(' · ')
+  lines.push(clipColumns(hint, contentWidth))
   const left = Math.floor((width - modalWidth) / 2)
   const renderedHeight = lines.length + 2
   const top = Math.floor((height - renderedHeight) / 2)
@@ -344,6 +380,7 @@ export function renderPickerContent(overlay, s, contentWidth, capacity) {
     entries,
     Math.max(0, Math.min(overlay.selected || 0, entries.length - 1)),
     capacity - visibleHeader.length,
+    overlay,
   )
   return {
     lines: [...visibleHeader, ...(entries.length ? content.lines : wrap(t(language, emptyKey), contentWidth))],

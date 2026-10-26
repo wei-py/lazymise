@@ -1,30 +1,13 @@
 import stringWidth from 'string-width'
 import { JOB_GLYPH } from '../../../vendor/lazy-kit/jobs.js'
 import { t } from '../../config/i18n.js'
-import { clipColumns, PAGE_ORDER, supportsConfigTarget } from '../state.js'
+import { clipColumns, supportsConfigTarget } from '../state.js'
 import { clipPath, displayPath, padColumns, windowContent, wrap } from './primitives.js'
-
-/** Sidebar: page navigation. */
-export function navContent(s, capacity) {
-  const entries = PAGE_ORDER.map(
-    page => `${page === s.page ? '▸' : ' '} ${pageName(page, s.language)}`,
-  )
-  return {
-    title: t(s.language, 'Sections'),
-    count: PAGE_ORDER.length,
-    ...windowContent(entries, PAGE_ORDER.indexOf(s.page), capacity),
-  }
-}
-
-export function pageName(page, language) {
-  return t(language, page)
-}
 
 /** Content list: varies by page. */
 export function listContent(s, items, capacity, width) {
   const { page, snapshot, search, selected, language } = s
   let title = ''
-  let titleTabs
   let renderItem = null
 
   switch (page) {
@@ -49,10 +32,7 @@ export function listContent(s, items, capacity, width) {
     }
     case 'Tools': {
       title = t(language, 'Tools')
-      titleTabs = [
-        { text: t(language, 'tool_scope_project'), active: s.toolScope !== 'global' },
-        { text: t(language, 'tool_scope_global'), active: s.toolScope === 'global' },
-      ]
+      title = `${title} · ${t(language, s.toolScope === 'global' ? 'tool_scope_global' : 'tool_scope_project')}`
       renderItem = (tool) => {
         const suffix = `${clipColumns(tool.version, 12)}${!tool.active ? ` ${t(language, '(inactive)')}` : ''}`
         const nameWidth = Math.max(1, width - stringWidth(suffix) - 4)
@@ -104,7 +84,7 @@ export function listContent(s, items, capacity, width) {
   }
 
   const entries = items.map(renderItem)
-  const content = windowContent(entries, selected, capacity)
+  const content = windowContent(entries, selected, capacity, s)
   if (!entries.length) {
     content.lines.push(
       search
@@ -112,7 +92,7 @@ export function listContent(s, items, capacity, width) {
         : getEmptyMessage(page, language),
     )
   }
-  return { title, titleTabs, count: items.length, ...content }
+  return { title, count: items.length, ...content }
 }
 
 export function getEmptyMessage(page, language) {
@@ -133,7 +113,7 @@ export function detailContent(s, items) {
   const { page, snapshot, selected, language } = s
 
   let lines = []
-  const title = t(language, 'Details')
+  const title = `${t(language, page)} · ${t(language, 'Details')}`
 
   switch (page) {
     case 'Dashboard': {
@@ -268,7 +248,7 @@ export function detailContent(s, items) {
               ]
             : []),
           '',
-          job.lastLine || t(language, '(waiting for output...)'),
+          job.output || job.lastLine || t(language, '(waiting for output...)'),
         ]
       }
       else {
