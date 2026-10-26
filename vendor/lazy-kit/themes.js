@@ -1,30 +1,8 @@
 /**
- * Terminal palettes. Four popular families (Gruvbox, Catppuccin, Tokyo Night,
- * Solarized), each shipped dark and light, plus the built-in default look.
- * `background: null` paints nothing so the terminal shows through (lazyaur's
- * default look); `surface` fills dialogs so they stay readable over panels.
- * Every palette carries the same semantic keys so the view never branches on theme.
+ * Named terminal palettes with a fixed Gruvbox Light default.
+ * Every palette carries the same semantic keys.
  */
 export const THEMES = [
-  {
-    id: 'default',
-    name: 'Default',
-    colors: {
-      background: null,
-      surface: '#1f2438',
-      text: '#c0caf5',
-      muted: '#6c7390',
-      border: '#3c4361',
-      focus: '#7aa2f7',
-      selection: '#2c3550',
-      selectionText: '#c0caf5',
-      warning: '#e0af68',
-      error: '#f7768e',
-      present: '#9ece6a',
-      aur: '#BB9AF7',
-      repo: '#7aa2f7',
-    },
-  },
   {
     id: 'gruvbox-dark',
     name: 'Gruvbox Dark',
@@ -51,16 +29,16 @@ export const THEMES = [
       background: '#fbf1c7',
       surface: '#fbf1c7',
       text: '#3c3836',
-      muted: '#7c6f64',
+      muted: '#504945',
       border: '#bdae93',
-      focus: '#076678',
+      focus: '#07525f',
       selection: '#d5c4a1',
       selectionText: '#282828',
-      warning: '#b57614',
+      warning: '#734600',
       error: '#9d0006',
-      present: '#79740e',
-      aur: '#BB9AF7',
-      repo: '#076678',
+      present: '#4f5600',
+      aur: '#653098',
+      repo: '#07525f',
     },
   },
   {
@@ -179,18 +157,16 @@ export const THEMES = [
   },
 ]
 
-export const DEFAULT_THEME = THEMES[0].id
+export const DEFAULT_THEME = 'gruvbox-light'
 
 export function isTheme(id) {
   return THEMES.some(theme => theme.id === id)
 }
 
 export function themeColors(id) {
-  const colors = THEMES.find(theme => theme.id === id)?.colors ?? THEMES[0].colors
-  // `null` means transparent: OpenTUI must receive `undefined` to paint nothing.
-  return colors.background === null ? { ...colors, background: undefined } : colors
+  return (THEMES.find(theme => theme.id === id) || THEMES.find(theme => theme.id === DEFAULT_THEME)).colors
 }
 
 export function themeName(id) {
-  return THEMES.find(theme => theme.id === id)?.name ?? THEMES[0].name
+  return (THEMES.find(theme => theme.id === id) || THEMES.find(theme => theme.id === DEFAULT_THEME)).name
 }
