@@ -1,9 +1,9 @@
 import { PAGE } from './state.js'
 
-function itemKey(app, item) {
+function itemKey(state, item) {
   if (!item)
     return null
-  switch (app.state.page) {
+  switch (state.page) {
     case PAGE.Tools:
       return `${item.name}\0${item.version}`
     case PAGE.Config:
@@ -17,15 +17,18 @@ function itemKey(app, item) {
   }
 }
 
-export function captureSelection(app) {
-  return itemKey(app, app.visibleItems()[app.state.selected])
+export function captureSelection(app, state = app.state) {
+  return itemKey(state, app.visibleItems(state)[state.selected])
 }
 
-export function restoreSelection(app, key) {
-  const index
-    = key === null ? -1 : app.visibleItems().findIndex(item => itemKey(app, item) === key)
+export function restoreSelection(app, key, state = app.state) {
+  const items = app.visibleItems(state)
+  const index = key === null ? -1 : items.findIndex(item => itemKey(state, item) === key)
   if (index >= 0)
-    app.state.selected = index
-  else app.state.detailScroll = 0
-  app.clampSelection()
+    state.selected = index
+  else if (key !== null)
+    state.detailScroll = 0
+  state.selected = Math.max(0, Math.min(state.selected, items.length - 1))
+  if (!items.length)
+    state.detailScroll = 0
 }

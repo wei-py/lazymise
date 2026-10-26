@@ -31,12 +31,15 @@ import {
 import { captureSelection, restoreSelection } from './selection.js'
 import {
   containsCaseInsensitive,
+  emptyPosition,
   filterCommands,
   FOCUS,
   focusSeq,
+  GROUPS,
   moveIndex,
   PAGE,
   PAGE_ORDER,
+  pageGroup,
   TOOL_SCOPE,
 } from './state.js'
 
@@ -44,8 +47,10 @@ export class Application {
   #render
   #exit
   #dying = false
+  #refreshVersion = 0
   #detailMaxScroll = 0
   #listCapacity = 0
+  #detailCapacity = 0
   projectConfigMissing = false
 
   constructor(render, exit) {
@@ -53,12 +58,16 @@ export class Application {
     this.#exit = exit
     this.state = {
       page: PAGE.Dashboard,
-      focus: FOCUS.Navigation,
+      focus: FOCUS.Group4,
+      focusedGroup: 3,
+      groupTabs: [PAGE.Tools, PAGE.Tasks, PAGE.Environment, PAGE.Dashboard],
+      pagePositions: Object.fromEntries(PAGE_ORDER.map(page => [page, emptyPosition()])),
+      listStart: 0,
       configTarget: null,
       toolScope: TOOL_SCOPE.Project,
       toolScopePositions: {
-        project: { selected: 0, detailScroll: 0, search: '' },
-        global: { selected: 0, detailScroll: 0, search: '' },
+        project: emptyPosition(),
+        global: emptyPosition(),
       },
       language: 'en',
       theme: DEFAULT_THEME,
@@ -88,18 +97,26 @@ export class Application {
 
   /** Shutdown hook: abort every in-flight job before the renderer tears down. */
   async close() {
-    this.runner.abortAll()
+    this.#dying = true
+    this.#refreshVersion++
+    await this.runner.abortAll()
   }
 
   update() {
+    if (this.#dying)
+      return
     const viewport = this.#render(this.state, this)
     if (viewport) {
       this.state.width = viewport.width
       this.state.height = viewport.height
       if (viewport.listCapacity != null)
         this.#listCapacity = viewport.listCapacity
-      this.#detailMaxScroll = viewport.detailMaxScroll
-      this.state.detailScroll = Math.min(this.state.detailScroll, this.#detailMaxScroll)
+      if (viewport.detailCapacity != null)
+        this.#detailCapacity = viewport.detailCapacity
+      if (viewport.detailMaxScroll != null) {
+        this.#detailMaxScroll = viewport.detailMaxScroll
+        this.state.detailScroll = Math.min(this.state.detailScroll, this.#detailMaxScroll)
+      }
       if (this.state.overlay && viewport.overlayMaxScroll != null) {
         this.state.overlay.scroll = Math.min(
           this.state.overlay.scroll || 0,
@@ -140,21 +157,40 @@ export class Application {
   }
 
   async refresh() {
+    if (this.#dying)
+      return false
+    const version = ++this.#refreshVersion
     try {
       const snapshot = await loadSnapshot()
-      const selection = captureSelection(this)
+      if (version !== this.#refreshVersion || this.#dying)
+        return false
+      const selections = PAGE_ORDER.map(page => [page, captureSelection(this, this.pageState(page))])
       this.state.snapshot = snapshot
       const names = new Set(snapshot.updates.map(item => item.name))
       for (const name of this.state.selectedUpdates) {
         if (!names.has(name))
           this.state.selectedUpdates.delete(name)
       }
-      restoreSelection(this, selection)
+      for (const [page, selection] of selections) {
+        const position = this.pageState(page)
+        restoreSelection(this, selection, position)
+        if (page !== this.state.page) {
+          this.state.pagePositions[page] = {
+            selected: position.selected,
+            search: position.search,
+            detailScroll: position.detailScroll,
+            listStart: position.listStart,
+            selectionKey: captureSelection(this, position),
+          }
+        }
+      }
       this.state.status = ''
       this.update()
       return true
     }
     catch (error) {
+      if (version !== this.#refreshVersion || this.#dying)
+        return false
       this.state.status = t(this.state.language, 'snapshot_load_failed', {
         error: error.message || String(error),
       })
@@ -164,6 +200,8 @@ export class Application {
   }
 
   handleKey(key) {
+    if (key.name === 'return')
+      key = { ...key, name: 'enter' }
     if (this.#dying)
       return
     if (this.state.overlay) {
@@ -190,6 +228,7 @@ export class Application {
         showHelp(this)
         return
       case '/':
+        this.activateFocusedPage()
         toggleSearch(this)
         return
       case 'r':
@@ -205,25 +244,18 @@ export class Application {
         this.#abortNewest()
         return
       case '1':
-        this.state.focus = FOCUS.Navigation
-        this.update()
-        return
       case '2':
-        this.state.focus = FOCUS.List
-        this.update()
-        return
       case '3':
+      case '4':
+        this.focusGroup(Number(name) - 1)
+        return
+      case '0':
         this.state.focus = FOCUS.Details
         this.update()
         return
       case '[':
       case ']':
-        if (this.state.page === PAGE.Tools && this.state.focus === FOCUS.List)
-          this.switchToolScope()
-        else if (this.state.focus === FOCUS.Navigation)
-          this.changePage(name === '[' ? -1 : 1, FOCUS.Navigation)
-        else if (this.state.page !== PAGE.Tools)
-          this.changePage(name === '[' ? -1 : 1)
+        this.changePage(name === '[' ? -1 : 1)
         return
       case 'h':
       case 'left':
@@ -259,23 +291,26 @@ export class Application {
         this.moveVertical(this.#halfPage())
         return
       case 'escape':
-        if (this.state.focus === FOCUS.Details)
-          this.state.focus = FOCUS.List
-        else if (this.state.focus === FOCUS.List)
-          this.state.focus = FOCUS.Navigation
-        this.update()
+        this.focusGroup(this.state.focusedGroup)
         return
+      case 'return':
       case 'enter':
-        if (this.state.focus === FOCUS.Navigation)
-          this.state.focus = FOCUS.List
-        else if (this.state.focus === FOCUS.List)
+        if (this.state.focus !== FOCUS.Details) {
+          this.activateFocusedPage()
           this.state.focus = FOCUS.Details
+        }
+        else {
+          this.state.focus = GROUPS[this.state.focusedGroup].id
+        }
         this.update()
         return
     }
-    // Action keys apply only with the list focused.
-    if (this.state.focus !== FOCUS.List)
+    // Only the focused group's real list receives action keys.
+    if (this.state.focus === FOCUS.Details)
       return
+    if (!['a', 'A', 'f2', 'm', 'M', 'i', 'I', 'D', 'space', 'u', 'U', 'R', 'n', 's', 'e', 'y'].includes(name))
+      return
+    this.activateFocusedPage()
     switch (name) {
       case 'a':
         void openRegistry(this)
@@ -299,7 +334,9 @@ export class Application {
   #handlePageKey(name) {
     switch (this.state.page) {
       case PAGE.Tools:
-        if (name === 'I')
+        if (name === 's')
+          this.switchToolScope()
+        else if (name === 'I')
           void useSelectedVersion(this)
         else if (name === 'i')
           void installSelectedVersion(this)
@@ -366,7 +403,8 @@ export class Application {
   }
 
   #halfPage() {
-    return Math.max(1, Math.floor(this.#listCapacity / 2))
+    const capacity = this.state.focus === FOCUS.Details ? this.#detailCapacity : this.#listCapacity
+    return Math.max(1, Math.floor(capacity / 2))
   }
 
   #abortNewest() {
@@ -493,12 +531,26 @@ export class Application {
   }
 
   restoreToolScope(scope) {
-    if (this.state.page === PAGE.Tools) {
-      const { selected, detailScroll, search } = this.state
-      this.state.toolScopePositions[this.state.toolScope] = { selected, detailScroll, search }
-      Object.assign(this.state, this.state.toolScopePositions[scope])
+    const position = this.pageState(PAGE.Tools)
+    const { selected, detailScroll, search, listStart } = position
+    this.state.toolScopePositions[this.state.toolScope] = {
+      selected,
+      detailScroll,
+      search,
+      listStart,
+      selectionKey: captureSelection(this, position),
     }
+    const next = this.state.toolScopePositions[scope]
     this.state.toolScope = scope
+    if (this.state.page === PAGE.Tools) {
+      const { selected, detailScroll, search, listStart } = next
+      Object.assign(this.state, { selected, detailScroll, search, listStart })
+      if (next.selectionKey !== undefined)
+        restoreSelection(this, next.selectionKey)
+    }
+    else {
+      this.state.pagePositions[PAGE.Tools] = { ...next }
+    }
     this.clampSelection()
   }
 
@@ -521,71 +573,121 @@ export class Application {
     this.update()
   }
 
-  jumpToPage(page, focus = FOCUS.List) {
-    this.state.overlay = null
-    this.state.focus = focus
-    if (this.state.page !== page) {
-      this.state.page = page
-      this.state.selected = 0
-      this.state.detailScroll = 0
-      this.state.search = ''
-    }
-    this.clampSelection()
+  /** Focus is independent from the page currently displayed on the right. */
+  focusGroup(index) {
+    this.state.focusedGroup = index
+    this.state.focus = GROUPS[index].id
     this.update()
   }
 
-  changePage(delta, focus = FOCUS.List) {
-    this.jumpToPage(
-      PAGE_ORDER[moveIndex(PAGE_ORDER.indexOf(this.state.page), delta, PAGE_ORDER.length)],
-      focus,
-    )
+  pageState(page) {
+    if (page === this.state.page)
+      return this.state
+    const saved = this.state.pagePositions[page]
+    const position = { ...this.state, ...saved, page }
+    if (saved.selectionKey !== undefined) {
+      restoreSelection(this, saved.selectionKey, position)
+      Object.assign(saved, {
+        selected: position.selected,
+        detailScroll: position.detailScroll,
+        selectionKey: captureSelection(this, position),
+      })
+    }
+    return position
+  }
+
+  savePagePosition() {
+    const { page, selected, search, detailScroll, listStart } = this.state
+    this.state.pagePositions[page] = {
+      selected,
+      search,
+      detailScroll,
+      listStart,
+      selectionKey: captureSelection(this),
+    }
+  }
+
+  activatePage(page) {
+    if (page !== this.state.page) {
+      this.savePagePosition()
+      const { selected, search, detailScroll, listStart } = this.pageState(page)
+      Object.assign(this.state, { selected, search, detailScroll, listStart, page })
+    }
+    this.clampSelection()
+  }
+
+  activateFocusedPage() {
+    if (this.state.focus !== FOCUS.Details)
+      this.activatePage(this.state.groupTabs[this.state.focusedGroup])
+  }
+
+  jumpToPage(page, focus = GROUPS[pageGroup(page)].id) {
+    this.state.overlay = null
+    const group = pageGroup(page)
+    this.state.groupTabs[group] = page
+    this.state.focusedGroup = group
+    this.state.focus = focus
+    this.activatePage(page)
+    this.update()
+  }
+
+  changePage(delta) {
+    const index = this.state.focusedGroup
+    const pages = GROUPS[index].pages
+    const page = pages[moveIndex(pages.indexOf(this.state.groupTabs[index]), delta, pages.length)]
+    this.state.groupTabs[index] = page
+    this.activatePage(page)
+    this.update()
   }
 
   cycleFocus(delta) {
     const seq = focusSeq()
-    this.state.focus = seq[moveIndex(seq.indexOf(this.state.focus), delta, seq.length)]
-    this.update()
+    const focus = seq[moveIndex(seq.indexOf(this.state.focus), delta, seq.length)]
+    if (focus === FOCUS.Details) {
+      this.state.focus = focus
+      this.update()
+    }
+    else {
+      this.focusGroup(seq.indexOf(focus))
+    }
   }
 
   moveVertical(delta) {
-    if (this.state.focus === FOCUS.Navigation) {
-      this.changePage(delta, FOCUS.Navigation)
-    }
-    else if (this.state.focus === FOCUS.List) {
+    if (this.state.focus !== FOCUS.Details) {
+      this.activateFocusedPage()
       this.state.selected = moveIndex(this.state.selected, delta, this.currentListLen())
       this.state.detailScroll = 0
       this.clampSelection()
-      this.update()
     }
     else {
       this.state.detailScroll = Math.max(
         0,
         Math.min(this.#detailMaxScroll, this.state.detailScroll + delta),
       )
-      this.update()
     }
-  }
-
-  moveFocus(delta) {
-    const seq = focusSeq()
-    this.state.focus
-      = seq[Math.max(0, Math.min(seq.length - 1, seq.indexOf(this.state.focus) + delta))]
     this.update()
   }
 
+  moveFocus(delta) {
+    this.cycleFocus(delta)
+  }
+
   #goTop() {
-    if (this.state.focus === FOCUS.List)
+    if (this.state.focus !== FOCUS.Details) {
+      this.activateFocusedPage()
       this.state.selected = 0
+    }
     this.state.detailScroll = 0
     this.update()
   }
 
   #goBottom() {
-    if (this.state.focus === FOCUS.List) {
+    if (this.state.focus !== FOCUS.Details) {
+      this.activateFocusedPage()
       this.state.selected = Math.max(0, this.currentListLen() - 1)
       this.state.detailScroll = 0
     }
-    else if (this.state.focus === FOCUS.Details) {
+    else {
       this.state.detailScroll = this.#detailMaxScroll
     }
     this.update()
@@ -601,15 +703,15 @@ export class Application {
     this.update()
   }
 
-  visibleItems() {
-    const { page, snapshot, search, commands } = this.state
+  visibleItems(state = this.state) {
+    const { page, snapshot, search, commands } = state
     const matches = (...fields) =>
       fields.some(field => containsCaseInsensitive(field || '', search))
     switch (page) {
       case PAGE.Dashboard:
         return []
       case PAGE.Tools: {
-        const tools = this.state.toolScope === TOOL_SCOPE.Global
+        const tools = state.toolScope === TOOL_SCOPE.Global
           ? snapshot.globalTools
           : snapshot.projectTools
         return search ? tools.filter(item => matches(item.name, item.version)) : tools
@@ -627,13 +729,13 @@ export class Application {
           ? snapshot.configs.filter(item => matches(item.path, item.tools.join(' ')))
           : snapshot.configs
       case PAGE.Console: {
-        const jobs = this.state.jobs.filter(job => !this.state.dismissedJobs.has(job.id))
+        const jobs = state.jobs.filter(job => !state.dismissedJobs.has(job.id))
         return search ? jobs.filter(item => matches(item.label, item.state, item.lastLine)) : jobs
       }
       case PAGE.Logs:
         return search
-          ? this.state.logs.filter(item => matches(item.command, item.output))
-          : this.state.logs
+          ? state.logs.filter(item => matches(item.command, item.output))
+          : state.logs
       case PAGE.Environment:
       case PAGE.System:
         return filterCommands(

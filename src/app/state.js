@@ -26,10 +26,27 @@ export const PAGE_ORDER = [
   PAGE.Logs,
 ]
 
+export const GROUPS = [
+  { id: 'Group1', pages: [PAGE.Tools, PAGE.Updates] },
+  { id: 'Group2', pages: [PAGE.Tasks, PAGE.Console] },
+  { id: 'Group3', pages: [PAGE.Environment, PAGE.Config] },
+  { id: 'Group4', pages: [PAGE.Dashboard, PAGE.System, PAGE.Logs] },
+]
+
 export const FOCUS = {
-  Navigation: 'Navigation',
-  List: 'List',
+  Group1: 'Group1',
+  Group2: 'Group2',
+  Group3: 'Group3',
+  Group4: 'Group4',
   Details: 'Details',
+}
+
+export function pageGroup(page) {
+  return GROUPS.findIndex(group => group.pages.includes(page))
+}
+
+export function emptyPosition() {
+  return { selected: 0, detailScroll: 0, search: '', listStart: 0 }
 }
 
 export const TOOL_SCOPE = {
@@ -44,17 +61,17 @@ export const VERSION_INTENT = {
 }
 
 export function layoutMode(width, height) {
-  if (width < 60 || height < 8)
+  if (width < 40 || height < 10)
     return 'small'
-  if (width >= 100)
-    return 'dual'
-  if (width >= 60)
-    return 'single'
-  return 'small'
+  if (width >= 100 && height >= 30)
+    return 'wide'
+  if (width >= 80)
+    return 'focused'
+  return 'stacked'
 }
 
 export function focusSeq() {
-  return [FOCUS.Navigation, FOCUS.List, FOCUS.Details]
+  return [...GROUPS.map(group => group.id), FOCUS.Details]
 }
 
 export function moveIndex(current, delta, len) {
