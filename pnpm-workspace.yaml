@@ -4,3 +4,4 @@ shellEmulator: true
 
 allowBuilds:
   esbuild: true
+  koffi: true

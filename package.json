@@ -1,34 +1,36 @@
 {
   "name": "lazymise",
   "type": "module",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "private": true,
   "packageManager": "pnpm@12.5.1",
   "bin": {
     "lazymise": "./src/main.js"
   },
   "engines": {
-    "node": ">=26.4.0"
+    "node": ">=24.22.1"
   },
   "scripts": {
     "build": "node scripts/build.js",
     "smoke:release": "node scripts/smoke-release.js",
-    "dev": "node --experimental-ffi src/main.js",
-    "test": "node --experimental-ffi --no-warnings --test",
+    "dev": "node src/main.js",
+    "test": "node --import ./src/register-ffi.js --no-warnings --test",
     "lint": "eslint .",
     "format": "pnpm dlx oxfmt@latest . && eslint . --fix",
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "@opentui/core": "0.5.11",
+    "koffi": "3.3.4",
     "string-width": "7.2.0"
   },
   "devDependencies": {
     "@antfu/eslint-config": "9.5.1",
     "@lydell/node-pty": "1.2.0-beta.15",
-    "@types/node": "26.6.5",
+    "@types/node": "24.19.2",
     "esbuild": "0.28.2",
     "eslint": "10.10.0",
-    "expect": "30.5.2"
+    "expect": "30.5.2",
+    "postject": "1.0.0-alpha.6"
   }
 }
