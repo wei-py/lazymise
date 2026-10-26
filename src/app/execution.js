@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { t } from '../config/i18n.js'
 import { execute, isInteractive } from '../mise.js'
+import { runProcess } from '../process.js'
 import { captureSelection, restoreSelection } from './selection.js'
 
 export function copySelectedConfig(app) {
@@ -17,7 +18,7 @@ export function copySelectedConfig(app) {
       label: `copy ${path}`,
       run: async (api) => {
         api.setLast(path)
-        await copyToClipboard(await readFile(path, 'utf8'))
+        await copyToClipboard(await readFile(path, 'utf8'), api.signal)
       },
     })
     .then((job) => {
@@ -31,17 +32,10 @@ export function copySelectedConfig(app) {
     })
 }
 
-async function copyToClipboard(text) {
+async function copyToClipboard(text, signal) {
   const cmd
     = process.platform === 'darwin' ? 'pbcopy' : process.platform === 'linux' ? 'wl-copy' : 'clip'
-  const proc = Bun.spawn([cmd], { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' })
-  proc.stdin.write(text)
-  proc.stdin.end()
-  const [stderr, exitCode] = await Promise.all([
-    new Response(proc.stderr).text(),
-    proc.exited,
-    new Response(proc.stdout).text(),
-  ])
+  const { stderr, exitCode } = await runProcess(cmd, [], { input: text, signal })
   if (exitCode !== 0)
     throw new Error(stderr.trim() || `clipboard exited with code ${exitCode}`)
 }
@@ -85,12 +79,9 @@ function noticeHandoff(app, args) {
 async function runHandoff(app, args) {
   const command = `mise ${args.join(' ')}`
   try {
-    const proc = Bun.spawn(['mise', ...args], {
-      stdout: 'inherit',
-      stderr: 'inherit',
-      stdin: 'inherit',
-    })
-    const exitCode = await proc.exited
+    const { exitCode } = app.handoff
+      ? await app.handoff(args)
+      : await runProcess('mise', args, { inherit: true })
     finishCommand(app, { command, output: '', success: exitCode === 0 })
   }
   catch (error) {
@@ -127,14 +118,14 @@ export function executeBackground(app, args, label, onComplete = null) {
   return app.runner
     .submit({ kind: 'mise', label, cmd: ['mise', ...args], serialized: true })
     .then(async (job) => {
-      let output = job.lastLine
+      let output = job.output || job.lastLine
       let success = job.state === 'done'
       if (job.state === 'canceled') {
         const seconds = `${Math.max(
           1,
           Math.round((job.endedAt - (job.startedAt ?? job.endedAt)) / 1000),
         )}s`
-        output = t(app.state.language, 'canceled · {seconds}', { seconds })
+        output = [output, t(app.state.language, 'canceled · {seconds}', { seconds })].filter(Boolean).join('\n')
       }
       if (onComplete) {
         try {

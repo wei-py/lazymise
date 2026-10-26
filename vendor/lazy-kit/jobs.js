@@ -1,9 +1,6 @@
-/**
- * Background job runner shared by the lazy TUIs. Jobs stream output line by
- * line into the status bar; `serialized` jobs (package DB locks, config
- * writes) run one at a time on a process-wide chain. Abort SIGTERMs the whole
- * process group when `setsid` exists so children never outlive their row.
- */
+import { startProcess } from '../../src/process.js'
+
+/** Serialized background jobs with streamed output and process-group cancellation. */
 
 export const JOB_GLYPH = {
   queued: '·',
@@ -15,34 +12,32 @@ export const JOB_GLYPH = {
 
 const ANSI_RE = /\x1B\[[0-9;]*[a-z]/gi
 const LOG_LIMIT = 200
-const SETSID = typeof Bun !== 'undefined' ? Bun.which('setsid') : null
+const OUTPUT_LIMIT = 256 * 1024
 
 // One process-wide chain: every runner shares the serialized queue.
 let chain = Promise.resolve()
 
-async function pump(stream, onLine) {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
+function linePump(onLine) {
   let carry = ''
-  for (;;) {
-    const { value, done } = await reader.read()
-    if (done)
-      break
-    carry += decoder.decode(value, { stream: true }).replace(ANSI_RE, '')
-    const parts = carry.split(/\r\n|\r|\n/)
-    carry = parts.pop() ?? ''
-    for (const part of parts)
-      onLine(part)
+  return {
+    write(chunk) {
+      carry += chunk.replace(ANSI_RE, '')
+      const parts = carry.split(/\r\n|\r|\n/)
+      carry = parts.pop() ?? ''
+      for (const part of parts) onLine(part)
+    },
+    end() {
+      if (carry)
+        onLine(carry)
+    },
   }
-  carry += decoder.decode()
-  if (carry)
-    onLine(carry)
 }
 
 export function createJobRunner({ onPatch = () => {} } = {}) {
   const jobs = []
   const logs = []
   const killers = new Map()
+  const processes = new Set()
   let seq = 0
 
   function log(line) {
@@ -51,38 +46,39 @@ export function createJobRunner({ onPatch = () => {} } = {}) {
       logs.shift()
   }
 
-  function spawn(job, op) {
-    const argv = SETSID ? [SETSID, ...op.cmd] : op.cmd
-    const proc = Bun.spawn({
-      cmd: argv,
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: op.env ? { ...Bun.env, ...op.env } : undefined,
-    })
-    killers.set(job.id, () => {
-      try {
-        if (SETSID)
-          process.kill(-proc.pid, 'SIGTERM')
-        else
-          proc.kill('SIGTERM')
-      }
-      catch {
-        // already exited
-      }
-    })
+  async function spawn(job, op) {
     const onLine = (line) => {
       job.lastLine = line
+      job.output = `${job.output}${line}\n`
+      if (job.output.length > OUTPUT_LIMIT)
+        job.output = `[earlier output truncated]\n${job.output.slice(-OUTPUT_LIMIT)}`
       log(line)
       onPatch(job)
     }
-    return (async () => {
-      await Promise.all([pump(proc.stdout, onLine), pump(proc.stderr, onLine)])
-      return await proc.exited
-    })()
+    const stdout = linePump(onLine)
+    const stderr = linePump(onLine)
+    const proc = startProcess(op.cmd[0], op.cmd.slice(1), {
+      env: op.env ? { ...process.env, ...op.env } : undefined,
+      onOutput: (chunk, channel) => (channel === 'stdout' ? stdout : stderr).write(chunk),
+    })
+    killers.set(job.id, () => { void proc.cancel().catch(() => {}) })
+    processes.add(proc.completion)
+    try {
+      const { exitCode } = await proc.completion
+      return exitCode
+    }
+    finally {
+      stdout.end()
+      stderr.end()
+      processes.delete(proc.completion)
+    }
   }
 
   async function runFunction(job, op) {
+    const controller = new AbortController()
+    killers.set(job.id, () => controller.abort())
     const api = {
+      signal: controller.signal,
       setLast(line) {
         job.lastLine = String(line)
         log(job.lastLine)
@@ -104,10 +100,12 @@ export function createJobRunner({ onPatch = () => {} } = {}) {
     onPatch(job)
     try {
       const code = op.cmd ? await spawn(job, op) : await runFunction(job, op)
+      job.exitCode = code
       if (job.state === 'canceled')
         return job
       job.state = code === 0 ? 'done' : 'failed'
-      job.exitCode = code
+      if (code !== 0 && !job.lastLine)
+        job.lastLine = `process exited with code ${code}`
       job.endedAt = Date.now()
       log(`exit ${code}`)
     }
@@ -130,7 +128,7 @@ export function createJobRunner({ onPatch = () => {} } = {}) {
 
   /**
    * Queue one job: `op.cmd` (argv array) runs as a child process, `op.run`
-   * receives `{ setLast, log }` — exactly one of the two is required.
+   * receives `{ setLast, log, signal }` — exactly one of the two is required.
    * `serialized: true` waits for earlier serialized jobs (`queued` state).
    * Resolves with the settled job and never rejects, so callers can chain
    * refreshes without blocking the key handler.
@@ -154,6 +152,7 @@ export function createJobRunner({ onPatch = () => {} } = {}) {
       endedAt: null,
       exitCode: null,
       lastLine: '',
+      output: '',
     }
     jobs.push(job)
     log(`$ ${hasCmd ? op.cmd.join(' ') : job.label}`)
@@ -183,9 +182,10 @@ export function createJobRunner({ onPatch = () => {} } = {}) {
     return true
   }
 
-  function abortAll() {
+  async function abortAll() {
     for (const job of [...jobs])
       abort(job.id)
+    await Promise.allSettled([...processes])
   }
 
   return {
