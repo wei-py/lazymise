@@ -23,16 +23,41 @@ A fast terminal interface for [mise](https://mise.jdx.dev/) tools, versions, upd
 - [mise](https://mise.jdx.dev/getting-started.html)
 - A UTF-8 terminal
 
-Rust is required only when installing from source.
+Standalone releases bundle Node.js and OpenTUI; they do not require a separately installed JavaScript runtime. Source development requires **Node.js >=26.4.0** and **pnpm 12.5.1**. The repository pins Node 26.7.0 for development and release builds. No Rust toolchain is required.
 
 ## Installation
+
+### Standalone release
+
+Download the matching archive and `SHA256SUMS` from [GitHub Releases](https://github.com/wei-py/lazymise/releases). Verify its SHA-256 before extracting. Archives retain the versioned directory `lazymise-v<VERSION>-<TARGET>/` with `lazymise` (or `lazymise.exe`), README, LICENSE, and dependency notices inside.
+
+The release workflow targets Linux glibc x86_64/aarch64, macOS x86_64/aarch64, and Windows x86_64, with native build and smoke-test steps for each target. Check the release's actual assets for availability; this is not a claim that every platform has been verified locally. musl and Windows arm64 are not configured release targets.
+
+For example, after downloading the macOS arm64 archive:
+
+```bash
+tar -xzf lazymise-v1.1.1-macos-aarch64.tar.gz
+mkdir -p ~/.local/bin
+install -m 755 lazymise-v1.1.1-macos-aarch64/lazymise ~/.local/bin/lazymise
+```
+
+Ensure the destination is on `PATH`; on Windows place `lazymise.exe` in a directory on `PATH`.
 
 ### From source
 
 ```bash
 git clone https://github.com/wei-py/lazymise.git
 cd lazymise
-cargo install --path . --locked
+pnpm install --frozen-lockfile
+pnpm dev
+# Optional: expose the source CLI on PATH (still requires Node and this checkout).
+pnpm link --global
+```
+
+The executable launcher automatically enables Node's experimental FFI for the TUI. `--help`, `--version`, and CLI passthrough work without a TTY or native renderer. Starting the TUI requires interactive stdin and stdout. Direct source invocation is also supported:
+
+```bash
+node /path/to/lazymise/src/main.js /path/to/project
 ```
 
 Then run `lazymise` from the project whose mise environment you want to manage:
@@ -42,51 +67,74 @@ cd your-project
 lazymise
 ```
 
-### Homebrew
+### Updating
 
-```bash
-brew install wei-py/tap/lazymise
-```
+`lazymise update` updates a standalone release from **wei-py/lazymise**. It downloads the matching archive and checksum, validates SHA-256 and the candidate executable's version, then stages replacement beside the executable. Failed or interrupted replacement restores the previous executable. The install directory must be writable; the command never installs a Cargo package or changes mise configuration. If Windows retains the running previous executable, the updater reports its unique `.lazymise-rollback-*/previous-executable` path; remove it after that process exits.
+
+Source checkouts refuse self-replacement (they must never overwrite the Node executable): use `git pull` followed by `pnpm install --frozen-lockfile`. If installed through a package manager such as Homebrew, prefer that manager's upgrade command.
 
 ## Command-line options
 
 ```text
 lazymise [OPTIONS]
+lazymise [project-directory]
+lazymise <command> [args...]
 
 Options:
   -h, --help       Print help
-  -V, --version    Print version
+  -v, --version    Print version
 ```
+
+## Grouped terminal workspace
+
+Four compact left-hand groups share one detail area:
+
+| Focus key | Page tabs |
+| --------- | --------- |
+| `1` | Tools / Updates |
+| `2` | Tasks / Console |
+| `3` | Environment / Config |
+| `4` | Dashboard / System / Logs |
+| `0` | Shared detail |
+
+Focus is separate from the active detail target. Moving focus alone keeps the right-hand content unchanged; selecting a row, changing a page tab, or invoking an action activates the focused group's actual page. Each page remembers its selection, filter, list position, and detail scroll when you return. Tools also remembers Project and Global scope positions separately. Actions never use a different group's row just because its detail is still visible.
+
+At **100 columns × 30 rows or larger**, all four groups are stacked beside the detail area. Otherwise, at **80 columns or more and at least 10 rows**, only the remembered group and detail are side by side. At **40–79 columns and at least 10 rows**, that group is stacked above the detail. Smaller terminals show a resize hint but still allow quitting and opening help/settings; existing overlays remain operable. Resizing does not reset page context. This is a terminal interface, with no Web sidecar.
 
 ## Essential keys
 
-| Key                         | Action                                                                                                                            |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `Tab` / `Shift-Tab`         | Cycle panel focus; in the registry picker, cycle every discovered backend prefix; in command arguments, focus the scrollable help |
-| `h` `j` `k` `l` or arrows   | Move focus, selection, details, or the focused command help viewport                                                              |
-| `1` / `2` / `3`             | Focus the Navigation / List / Details panel                                                                                       |
-| `[` / `]`                   | Tools List: Project / Global tabs; Navigation and other pages: previous / next page; Tools Details: no action                       |
-| `L`                          | Switch 中文 / English                                                                                                             |
-| `x`                          | Abort the newest running background job                                                                                           |
-| `F2`                        | Select the exact configuration file for subsequent guided Use operations                                                          |
-| `a`                         | Select a target if needed, then open the registry and choose a tool, source, and version                                          |
-| `A`                         | Select a target if needed, then enter a complete custom spec such as `cargo:example@1.2.3`                                        |
-| `I` in Tools                | Browse versions and write the chosen version to the selected file                                                                 |
-| `i`                         | Browse versions and install one                                                                                                   |
-| `D`                         | Uninstall the selected version after confirmation                                                                                 |
-| `Space`, `u`, `U`           | Mark updates; confirm marked/current tools; confirm all filtered tools                                                            |
-| `m`                         | Open actions related to the current page                                                                                          |
-| `:`                         | Open settings (language / theme)                                                                                                  |
-| `M`                         | Open the complete mise command catalog                                                                                           |
-| `/`                         | Filter the page list, registry, command palette, or configuration selector                                                        |
-| `Esc`                       | Return one overlay level, or Details → List → Navigation                                                                          |
-| `Ctrl+u` in text            | Clear the current input; Backspace deletes one complete grapheme                                                                  |
-| `?`                         | Open built-in help                                                                                                                |
-| `q`                         | Quit                                                                                                                              |
+These are main-workspace keys; overlays and text inputs take precedence. Item actions require a left-hand group to be focused.
+
+| Key | Action |
+| --- | ------ |
+| `1`–`4` / `0` | Focus a group / the shared detail without changing the active target |
+| `Tab` / `Shift-Tab`, `h/l` or left/right | Cycle the four groups and detail; in overlays, follow their local hints |
+| `[` / `]` | Previous / next page tab in the remembered group, including from detail focus |
+| `j/k` or up/down | Select a row in the focused group, or scroll detail |
+| `Home/End`, `g/G` | First / last row or detail line |
+| `PgUp/PgDn`, `Ctrl+d/u` | Move or scroll by half a page |
+| `Enter` / `Esc` | Open the focused selection in detail / return to the remembered group; Enter in detail also returns to that group |
+| `s` in Tools | Switch Project / Global tool scope and its default write target |
+| `L` | Switch 中文 / English |
+| `r` / `x` | Refresh / abort the newest queued or running background job |
+| `F2` | Select the exact configuration file for subsequent guided Use operations |
+| `a` / `A` | Open the registry / enter a complete custom spec such as `cargo:example@1.2.3`, selecting a target first if needed |
+| `I` / `i` in Tools | Browse versions to use in the selected configuration / install only |
+| `D` in Tools | Confirm uninstalling the selected exact `tool@version` |
+| `Space`, `u`, `U` in Updates | Mark updates; confirm marked/current tools; confirm all filtered tools |
+| `R` in Tasks / Environment / System | Run the selected task / open the selected command's help and arguments |
+| `n/s/e/y` in Config | Create local `mise.toml` / select target / edit / copy the complete file |
+| `D` in Console | Dismiss finished jobs, retaining queued and running jobs |
+| `m` / `M` | Open focused-page actions / the complete mise command catalog |
+| `:` | Open settings (language / theme) |
+| `/` | Filter the focused page list, registry, command palette, or configuration selector |
+| `Ctrl+u` in text | Clear the input; Backspace deletes one complete grapheme |
+| `?` | Open categorized built-in help |
+| `q` / `Ctrl+c` | Quit; active jobs require confirmation |
 
 See [USAGE.md](USAGE.md) for the complete workflow and key reference.
 
-## Language
+## Language, theme, and help
 
 Press `:` to open the two-row settings popup. `j/k` selects the language or theme row, `Enter`/`l` moves to the next value and `h` to the previous one; changes apply and save instantly, `Esc` closes. `L` toggles 中文/English directly. The choice persists in:
 
@@ -96,21 +144,23 @@ Press `:` to open the two-row settings popup. `j/k` selects the language or them
 
 `LAZYMISE_CONFIG_DIR` and `XDG_CONFIG_HOME` are supported.
 
-If saving fails, the current language stays active and the status shows the original error.
+If saving fails, the previous setting remains active and the status shows the original error.
 
-Built-in help (`?`) supports `j/k` or arrows, `PageUp`/`PageDown`, and `Home`/`End`. `Esc`, `q`, or `Ctrl-c` closes help.
+The default is **Gruvbox Light** (`gruvbox-light`), fixed regardless of the terminal's light/dark appearance. A missing theme or the legacy generic `default` preference falls back to Gruvbox Light without rewriting the settings file on load. Existing explicit named palettes remain selected; choose another palette in settings if desired.
 
-### TUI fixes
+Built-in help (`?`) is available in English and Chinese, with **Navigation / Actions / Notes** (**导航 / 操作 / 说明**) categories. Left/right or `[`/`]` changes category; `j/k`, up/down, `PageUp/PageDown`, and `Home/End` scroll. Each category remembers its scroll position, and the footer shows category/scroll/close hints and position. `Esc`, `Enter`, or `q` closes help and restores the underlying focus.
 
-Guided writes select a concrete configuration file before choosing tools. `1`/`2`/`3` focus panels; `[`/`]` switch Project/Global tabs in the Tools list, or pages with Navigation focus and on other pages. Enter opens Details, and nested dialogs preserve their parent input and selection. Native dialogs retain centered borders, Unicode-aware clipping, visible focus, and local hints; long output and paths can be scrolled.
+Help keeps its controls inside the dialog; the background navigation footer is hidden while help is open.
+
+Nested dialogs retain parent input and selection. While editing, letters, `?`, digits, and punctuation are text, not workspace shortcuts. Long output, paths, and errors have scrollable viewports with local hints.
 
 ## Configuration target
 
-In Config with List focus, press `n` to create `mise.toml` in the current working directory. `Enter/y` confirms; `Esc/n/q` cancels. Confirmation immediately creates an empty `[tools]` table, selects the file in the list, and makes it the write target. Existing files, directories, and symlinks are never overwritten. Global configuration is unchanged; subsequent guided Use operations write to this local file.
+With the Config group focused, press `n` to create `mise.toml` in the current working directory. Confirmations start on **Cancel**: press `y` explicitly, or choose Confirm with right/`l` (or Tab) and then Enter; Enter on Cancel, `Esc`, `n`, or `q` cancels. Confirmation immediately creates an empty `[tools]` table, selects the file in the list, and makes it the write target. Existing files, directories, and symlinks are never overwritten. Global configuration is unchanged; subsequent guided Use operations write to this local file.
 
-Tools opens on the **Project** tab: effective configured project tools, including inherited global declarations (marked `global`). **Global** shows actual global configuration declarations, even when a project overrides them. Neither tab includes installed tools that no configuration references. With Tools List focused, `[`/`]` cycles tabs; the active tab is highlighted in the panel title. Narrow panels retain the active tab. Switching tabs does not activate or change the terminal environment.
+Tools defaults to the **Project** scope: effective configured project tools, including inherited global declarations (marked `global`). **Global** shows actual global configuration declarations, even when a project overrides them. Neither scope includes installed tools that no configuration references. With the Tools group focused, `s` switches scope; the scope is shown within the group. `[`/`]` instead switches Tools / Updates page tabs. Switching scope does not activate or change the terminal environment.
 
-The default write target follows the tab: Project uses the project configuration, Global uses the global configuration. Global paths follow `MISE_GLOBAL_CONFIG_FILE`, then `MISE_CONFIG_DIR`, then `XDG_CONFIG_HOME/mise`, otherwise `~/.config/mise/config.toml`. Startup never creates a file. Press `F2`, or `s` on a file in Config, to select an exact target; a manual selection also synchronizes the Tools tab to its scope. Refresh preserves a manual choice. Selecting or cancelling never writes a file, and the target is not persisted.
+The default write target follows the tool scope: Project uses the project configuration, Global uses the global configuration. Global paths follow `MISE_GLOBAL_CONFIG_FILE`, then `MISE_CONFIG_DIR`, then `XDG_CONFIG_HOME/mise`, otherwise `~/.config/mise/config.toml`. Startup never creates a file. Press `F2` with a group focused, or `s` on a file in Config, to select an exact target; a manual selection also synchronizes Tools to its scope. Refresh preserves a manual choice. Selecting or cancelling never writes a file, and the target is not persisted.
 
 - Discovered project and global files are listed together; the first file is never implicitly selected.
 - Enter an absolute or project-relative `.toml` path, or choose the new project `mise.toml` action. Explicit `~/` expands to your home; `$VAR` is literal.
@@ -119,37 +169,40 @@ The default write target follows the tab: Project uses the project configuration
 - Use and Custom Tool execute `mise use --yes --path <absolute-file> <exact-spec>`. Every submission revalidates the target; a removed existing file requires explicit creation approval again.
 - `F2` inside a loaded write picker or Custom Tool changes the target without losing input. Loading pickers ask you to wait. Install-only pickers and expert commands do not intercept it.
 
-The Tools tab controls which configured declarations are shown and the default guided write target. It does not redirect Install, Uninstall, Upgrade, tasks, or expert-command arguments, nor a command already submitted. The former `p/G` shortcuts and Custom Tool's hidden Tab target switch are removed.
+Tool scope controls which configured declarations are shown and the default guided write target. It does not redirect Install, Uninstall, Upgrade, tasks, or expert-command arguments, nor a command already submitted. The former `p/G` shortcuts and Custom Tool's hidden Tab target switch are removed.
 
-Search starts explicitly with `/`. While editing, letters including `p/G/j/k/q` are text; Enter accepts the query without selecting a result, Esc restores the previous query and cursor, and Ctrl+u clears it. Outside text input, Esc/q returns one dialog level and Ctrl+c cancels the entire flow. Long modal paths/errors show a `PgUp/PgDn` position hint.
+Search starts explicitly with `/`. While editing, letters including `p/G/j/k/q`, `?`, and digits are text. In local page search, Enter accepts the query without selecting a result; Tab switches between local filtering and registry-add search, where Enter selects a tool. Registry pickers have their own Tab/Shift-Tab backend filters and explicit `/` editing. Esc restores the previous query and cursor, and Ctrl+u clears input. In overlays, Esc/q returns one level outside text input, and Ctrl+c cancels the flow. Long modal paths/errors show a `PgUp/PgDn` position hint.
 
-Item actions require List focus. Tools Enter/v uses a version, `i` installs only, and `d` confirms the exact `tool@version`. Config Enter chooses the target, `e` edits, and `y` copies the complete file. Console/Logs Enter focuses output; Details supports Home/End and Ctrl+d/u scrolling.
+Item actions operate on the focused group's actual list, not the page still shown in shared detail. Tools `I` uses a version, `i` installs only, and `D` confirms the exact `tool@version`. Config `s` chooses the target, `e` edits, and `y` copies the complete file. Enter focuses shared detail, including Console/Logs output; detail supports Home/End and Ctrl+d/u scrolling. Detail focus does not dispatch list actions.
 
-Updates Enter/u confirms marked tools, or only the current row when nothing is marked. `U` confirms all **currently filtered** tools. Confirmation captures and lists the exact names; cancellation runs nothing. Expert `upgrade` also requires confirmation and never gains an implicit `--path`.
+Updates `u` confirms marked tools, or only the current row when nothing is marked. `U` confirms all **currently filtered** tools. Confirmation captures and lists the exact names; cancellation runs nothing. Expert `upgrade` also requires confirmation and never gains an implicit `--path`.
 
-`lazymise` asks for confirmation before destructive operations. Commands such as `activate` cannot mutate the parent shell because the TUI runs as a child process; use mise's normal shell activation setup for persistent parent-shell changes.
+Destructive confirmations start on Cancel. Use explicit `y`, or select Confirm before pressing Enter; an unqualified Enter cancels. Commands such as `activate` cannot mutate the parent shell because the TUI runs as a child process; use mise's normal shell activation setup for persistent parent-shell changes.
 
 ## Development
 
 ```bash
-mise install
-mise run check
-mise run dev
+pnpm install --frozen-lockfile
+pnpm test
+pnpm lint
+pnpm dev
+pnpm build
+pnpm smoke:release
 ```
 
-The project pins Rust 1.94.0 in `mise.toml`; the release workflow uses the same
-mise-managed toolchain.
+`mise install` can provision the pinned Node/pnpm toolchain; `mise run check` runs lint and tests. Tests use isolated fixture processes and settings rather than installing real mise tools. The release builder uses esbuild and Node's ESM single-executable application (SEA), embeds all assets from `@opentui/core/node-assets`, resolves native packages from OpenTUI's actual dependency graph, and preserves Node's signing entitlements on macOS. No Web sidecar is shipped.
 
 ## 中文说明
 
-`lazymise` 是一个基于 Ratatui 的 mise 终端界面，用工作流组织工具版本、更新、项目任务、环境和配置操作。
+`lazymise` 是一个使用 JavaScript ESM 与 OpenTUI 0.5.11 的 mise 终端界面，用工作流组织工具版本、更新、项目任务、环境和配置操作。
 
 ### 安装
 
 ```bash
 git clone https://github.com/wei-py/lazymise.git
 cd lazymise
-cargo install --path . --locked
+pnpm install --frozen-lockfile
+pnpm link --global
 ```
 
 进入使用 mise 的项目目录后运行：
@@ -166,19 +219,36 @@ lazymise
 - 多选并升级过期工具。
 - 运行 `mise.toml` 中定义的项目任务。
 - 使用 Environment 页面执行 `env`、`exec`、`which` 等命令。
-- 按 `m` 打开当前页面相关操作，按 `:` 打开全部 mise 命令。
+- 按 `m` 打开当前聚焦组页面的相关操作，按 `M` 打开全部 mise 命令；`:` 是设置，不是命令目录。
 - 按 `A` 输入 `github:owner/repository`、`npm:package` 等完整自定义后端标识；此类标识已明确来源，不会再次要求选择来源。
-- 按 `F2` 选择具体配置文件；Tools 的 `Enter/v` 与 `A` 通过 `--path` 写入该文件，库存不随目标过滤。
+- 按 `F2` 选择具体配置文件；Tools 的 `I` 与 `A` 通过 `--path` 写入该文件，`Enter` 只聚焦共享详情。工具列表由项目／全局范围决定，不随手动目标过滤。
 - 按 `:` 打开设置弹层（语言 / 主题两行），`j/k` 选行、`Enter`/`l` 下一值、`h` 上一值，即时生效并保存；`L` 直接切换语言。
+
+### 分组、焦点与帮助
+
+左侧四组与右侧共享详情配合：`1` 聚焦 Tools / Updates，`2` 聚焦 Tasks / Console，`3` 聚焦 Environment / Config，`4` 聚焦 Dashboard / System / Logs；`0` 聚焦详情。`Tab/Shift-Tab` 或 `h/l`、左右键循环焦点，`[`/`]` 切换记忆组的页面标签；Tools 中 `s` 单独切换项目／全局范围。
+
+仅切换焦点不会替换右侧当前目标。移动选中行、切换页面标签或执行动作时，才激活聚焦组的真实页面；动作不会误用右侧旧页面的选中项。每页保留选中行、过滤、列表位置和详情滚动；Tools 的项目／全局范围分别保留位置。`Enter` 打开共享详情，详情中 `Enter` 或 `Esc` 返回记忆组。
+
+宽高至少 **100×30** 时显示四组与右侧详情；否则宽至少 **80** 且高至少 **10** 时显示当前组与详情左右布局；**40–79** 列且高至少 **10** 时上下布局。更小时显示尺寸提示，仍可退出、打开帮助和设置，并操作已打开的弹层；缩放不重置页面上下文。
+
+默认主题固定为 **Gruvbox Light**（`gruvbox-light`），不随终端深浅色变化。缺少主题或旧通用值 `default` 会回退到该主题，加载时不改写设置；已有明确命名的主题继续保留。语言与主题均可在设置中选择并持久化。
+
+`?` 帮助按 **导航 / 操作 / 说明**（Navigation / Actions / Notes）分类；左右键或 `[`/`]` 换类，`j/k`、上下键、`PgUp/PgDn`、`Home/End` 滚动，分类各自记忆位置。`Esc/Enter/q` 关闭并恢复原焦点。输入时 `jq?123` 等内容都是文字，不触发全局键。
+
+帮助的操作提示只放在弹窗内，不再与底部全局导航提示重复。
+
+确认框默认选中取消；明确按 `y`，或右键／`l`／Tab 选择确认后按 Enter 才执行。直接 Enter、`Esc/n/q` 取消，不运行命令。运行中的任务保留在 Console，`x` 中止最近排队或运行的任务。
 
 完整操作说明见 [USAGE.md](USAGE.md)。
 
 ### 开发
 
-项目在 `mise.toml` 中固定使用 Rust 1.94.0。安装工具链并运行检查：
+预编译发行版内置 Node，无需 Rust、Bun 或额外的 JavaScript 运行时。源码开发要求 Node.js >=26.4.0 和 pnpm 12.5.1，`mise.toml` 固定 Node 26.7.0。可先安装工具链，再安装依赖并运行检查：
 
 ```bash
 mise install
+pnpm install --frozen-lockfile
 mise run check
 mise run dev
 ```
