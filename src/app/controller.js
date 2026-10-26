@@ -228,6 +228,8 @@ export class Application {
         showHelp(this)
         return
       case '/':
+        if (this.state.focus === FOCUS.Details)
+          return
         this.activateFocusedPage()
         toggleSearch(this)
         return
@@ -274,7 +276,8 @@ export class Application {
         this.moveVertical(-1)
         return
       case 'tab':
-        this.cycleFocus(shift ? -1 : 1)
+      case 'backtab':
+        this.cycleFocus(shift || name === 'backtab' ? -1 : 1)
         return
       case 'g':
       case 'home':
@@ -295,14 +298,7 @@ export class Application {
         return
       case 'return':
       case 'enter':
-        if (this.state.focus !== FOCUS.Details) {
-          this.activateFocusedPage()
-          this.state.focus = FOCUS.Details
-        }
-        else {
-          this.state.focus = GROUPS[this.state.focusedGroup].id
-        }
-        this.update()
+        this.moveFocus(1)
         return
     }
     // Only the focused group's real list receives action keys.
@@ -655,7 +651,7 @@ export class Application {
   moveVertical(delta) {
     if (this.state.focus !== FOCUS.Details) {
       this.activateFocusedPage()
-      this.state.selected = moveIndex(this.state.selected, delta, this.currentListLen())
+      this.state.selected = Math.max(0, Math.min(this.currentListLen() - 1, this.state.selected + delta))
       this.state.detailScroll = 0
       this.clampSelection()
     }
@@ -669,7 +665,15 @@ export class Application {
   }
 
   moveFocus(delta) {
-    this.cycleFocus(delta)
+    if (delta < 0) {
+      if (this.state.focus === FOCUS.Details)
+        this.focusGroup(this.state.focusedGroup)
+    }
+    else if (this.state.focus !== FOCUS.Details) {
+      this.activateFocusedPage()
+      this.state.focus = FOCUS.Details
+      this.update()
+    }
   }
 
   #goTop() {
