@@ -101,6 +101,8 @@ Focus is separate from the active detail target. Moving focus alone keeps the ri
 
 At **100 columns × 30 rows or larger**, all four groups are stacked beside the detail area. Otherwise, at **80 columns or more and at least 10 rows**, only the remembered group and detail are side by side. At **40–79 columns and at least 10 rows**, that group is stacked above the detail. Smaller terminals show a resize hint but still allow quitting and opening help/settings; existing overlays remain operable. Resizing does not reset page context. This is a terminal interface, with no Web sidecar.
 
+In the four-group layout, the remembered navigation group expands to use the remaining height; the other three groups retain a three-line preview. Focusing detail keeps that group expanded, and resizing preserves the remembered group.
+
 ## Essential keys
 
 These are main-workspace keys; overlays and text inputs take precedence. Item actions require a left-hand group to be focused.
@@ -108,12 +110,13 @@ These are main-workspace keys; overlays and text inputs take precedence. Item ac
 | Key | Action |
 | --- | ------ |
 | `1`–`4` / `0` | Focus a group / the shared detail without changing the active target |
-| `Tab` / `Shift-Tab`, `h/l` or left/right | Cycle the four groups and detail; in overlays, follow their local hints |
+| `Tab` / `Shift-Tab` | Cycle the four groups and detail; overlays follow their local hints |
+| `h/←` / `l/→` | Return from detail to the remembered group / open the focused selection in detail; never cycle groups |
 | `[` / `]` | Previous / next page tab in the remembered group, including from detail focus |
-| `j/k` or up/down | Select a row in the focused group, or scroll detail |
+| `j/k` or up/down | Select a row in the focused group, or scroll detail; stop at the first and last row |
 | `Home/End`, `g/G` | First / last row or detail line |
 | `PgUp/PgDn`, `Ctrl+d/u` | Move or scroll by half a page |
-| `Enter` / `Esc` | Open the focused selection in detail / return to the remembered group; Enter in detail also returns to that group |
+| `Enter` / `Esc` | Open the focused selection in detail / return to the remembered group; Enter in detail does not leave it |
 | `s` in Tools | Switch Project / Global tool scope and its default write target |
 | `L` | Switch 中文 / English |
 | `r` / `x` | Refresh / abort the newest queued or running background job |
@@ -226,11 +229,13 @@ lazymise
 
 ### 分组、焦点与帮助
 
-左侧四组与右侧共享详情配合：`1` 聚焦 Tools / Updates，`2` 聚焦 Tasks / Console，`3` 聚焦 Environment / Config，`4` 聚焦 Dashboard / System / Logs；`0` 聚焦详情。`Tab/Shift-Tab` 或 `h/l`、左右键循环焦点，`[`/`]` 切换记忆组的页面标签；Tools 中 `s` 单独切换项目／全局范围。
+左侧四组与右侧共享详情配合：`1` 聚焦 Tools / Updates，`2` 聚焦 Tasks / Console，`3` 聚焦 Environment / Config，`4` 聚焦 Dashboard / System / Logs；`0` 聚焦详情。`Tab/Shift-Tab` 循环焦点，`l/→` 进入所选详情，`h/←` 从详情返回上次导航组，不用于循环分组。`[`/`]` 切换记忆组的页面标签；Tools 中 `s` 单独切换项目／全局范围。
 
-仅切换焦点不会替换右侧当前目标。移动选中行、切换页面标签或执行动作时，才激活聚焦组的真实页面；动作不会误用右侧旧页面的选中项。每页保留选中行、过滤、列表位置和详情滚动；Tools 的项目／全局范围分别保留位置。`Enter` 打开共享详情，详情中 `Enter` 或 `Esc` 返回记忆组。
+数字与 Tab 仅切换焦点，不会替换右侧当前目标。移动选中行、切换页面标签或进入详情／执行动作时，才激活聚焦组的真实页面；动作不会误用右侧旧页面的选中项。每页保留选中行、过滤、列表位置和详情滚动；Tools 的项目／全局范围分别保留位置。`Enter` 打开共享详情；详情中再次 Enter 不返回，使用 `h/←` 或 `Esc` 返回记忆组。列表上下移动及翻页到首尾时停止，不循环。
 
 宽高至少 **100×30** 时显示四组与右侧详情；否则宽至少 **80** 且高至少 **10** 时显示当前组与详情左右布局；**40–79** 列且高至少 **10** 时上下布局。更小时显示尺寸提示，仍可退出、打开帮助和设置，并操作已打开的弹层；缩放不重置页面上下文。
+
+四组同时显示时，当前记忆的导航组自动占用主要高度，其余各保留三行预览；切到详情仍保留该组展开，缩放后继续保留原组。
 
 默认主题固定为 **Gruvbox Light**（`gruvbox-light`），不随终端深浅色变化。缺少主题或旧通用值 `default` 会回退到该主题，加载时不改写设置；已有明确命名的主题继续保留。语言与主题均可在设置中选择并持久化。
 
