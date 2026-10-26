@@ -5,13 +5,13 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { getNodeAssets } from '@opentui/core/node-assets'
 import { build } from 'esbuild'
+import { inject } from 'postject'
 import { releaseTarget } from '../src/release.js'
 
 const root = join(import.meta.dirname, '..')
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-const [major, minor] = process.versions.node.split('.').map(Number)
-if (major < 26 || (major === 26 && minor < 4))
-  throw new Error('Node.js >=26.4.0 is required to build releases.')
+if (process.versions.node !== '24.22.1')
+  throw new Error('Node.js 24.22.1 is required to build releases.')
 const tag = process.env.RELEASE_TAG || (process.env.GITHUB_REF_TYPE === 'tag' ? process.env.GITHUB_REF_NAME : null)
 if (tag && tag !== `v${pkg.version}`)
   throw new Error(`Release tag must match package.json: v${pkg.version}`)
@@ -37,64 +37,125 @@ const assets = getNodeAssets({
   arch: process.arch,
   ...(process.platform === 'linux' ? { libc: 'glibc' } : {}),
 })
-const bundle = join(buildDirectory, 'bundle.mjs')
+const koffiDirectory = await packageDirectory('koffi', root)
+const koffiNativePackage = `@koromix/koffi-${process.platform}-${process.arch}`
+const koffiNativeDirectory = await packageDirectory(koffiNativePackage, koffiDirectory)
+assets.push({
+  key: 'koffi.node',
+  source: join(koffiNativeDirectory, `${process.platform}_${process.arch}`, 'koffi.node'),
+})
+const bundle = join(buildDirectory, 'main.mjs')
 await build({
   entryPoints: [join(root, 'src/main.js')],
   outfile: bundle,
   bundle: true,
   format: 'esm',
   platform: 'node',
-  target: 'node26',
-  banner: {
-    js: `import { mkdirSync as seaMkdir, mkdtempSync as seaMkdtemp, readdirSync as seaReaddir, rmSync as seaRm, writeFileSync as seaWrite } from 'node:fs';
-import { tmpdir as seaTmpdir } from 'node:os';
-import { dirname as seaDirname, join as seaJoin } from 'node:path';
-import { getRawAsset as seaGetAsset, isSea as seaIsSea } from 'node:sea';
-if (!seaIsSea()) throw new Error('Expected a Node SEA executable');
+  target: 'node24',
+  define: { 'import.meta.main': 'false' },
+  plugins: [{
+    name: 'external-ffi-registration',
+    setup(builder) {
+      builder.onResolve({ filter: /^\.\/register-ffi\.js$/ }, () => ({
+        path: './register-ffi.mjs',
+        external: true,
+      }))
+    },
+  }],
+})
+const adapter = join(buildDirectory, 'ffi.cjs')
+await build({
+  entryPoints: [join(root, 'src/ffi.cjs')],
+  outfile: adapter,
+  bundle: true,
+  format: 'cjs',
+  platform: 'node',
+  target: 'node24',
+  external: ['./koffi.node'],
+  plugins: [{
+    name: 'embedded-koffi-addon',
+    setup(builder) {
+      // Keep Koffi's public JS wrappers, but load only the embedded host addon.
+      builder.onLoad({ filter: /[/\\]koffi[/\\]src[/\\]static\.cjs$/ }, () => ({
+        contents: 'exports.loadStatic = () => require("./koffi.node")',
+        loader: 'js',
+      }))
+    },
+  }],
+})
+const registration = join(buildDirectory, 'register-ffi.mjs')
+await copyFile(join(root, 'src/register-ffi.js'), registration)
+assets.push(
+  { key: 'main.mjs', source: bundle },
+  { key: 'ffi.cjs', source: adapter },
+  { key: 'register-ffi.mjs', source: registration },
+)
+
+// Node 24 SEAs start in CommonJS. Extract ESM and native assets before importing
+// the FFI hook, then load Core-containing code only after that hook is active.
+const bootstrap = join(buildDirectory, 'bootstrap.cjs')
+await writeFile(bootstrap, `const { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { dirname, join } = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { getRawAsset, isSea } = require('node:sea');
+if (!isSea()) throw new Error('Expected a Node SEA executable');
 // Loaded DLLs stay locked on Windows. Reclaim only assets owned by dead processes.
 if (process.platform === 'win32') {
-  for (const entry of seaReaddir(seaTmpdir(), { withFileTypes: true })) {
+  for (const entry of readdirSync(tmpdir(), { withFileTypes: true })) {
     const owner = /^lazymise-opentui-(\\d+)-/.exec(entry.name);
     if (!entry.isDirectory() || !owner) continue;
     try { process.kill(Number(owner[1]), 0); }
     catch (error) {
-      if (error.code === 'ESRCH') seaRm(seaJoin(seaTmpdir(), entry.name), { recursive: true, force: true });
+      if (error.code === 'ESRCH') rmSync(join(tmpdir(), entry.name), { recursive: true, force: true });
       else if (error.code !== 'EPERM') throw error;
     }
   }
 }
-const seaRoot = seaMkdtemp(seaJoin(seaTmpdir(), 'lazymise-opentui-' + process.pid + '-'));
-if (process.platform !== 'win32') process.once('exit', () => seaRm(seaRoot, { recursive: true, force: true }));
-try {
-  for (const key of ${JSON.stringify(assets.map(({ key }) => key))}) {
-    const path = seaJoin(seaRoot, key);
-    seaMkdir(seaDirname(path), { recursive: true, mode: 0o700 });
-    seaWrite(path, new Uint8Array(seaGetAsset(key)), { mode: 0o600 });
-  }
-} catch (error) { seaRm(seaRoot, { recursive: true, force: true }); throw error; }
-process.env.OTUI_ASSET_ROOT = seaRoot;
-${process.platform === 'linux' ? 'process.env.OPENTUI_LIBC = \'glibc\';' : ''}`,
-  },
-})
+const assetRoot = mkdtempSync(join(tmpdir(), 'lazymise-opentui-' + process.pid + '-'));
+if (process.platform !== 'win32') process.once('exit', () => rmSync(assetRoot, { recursive: true, force: true }));
+(async () => {
+  try {
+    for (const key of ${JSON.stringify(assets.map(({ key }) => key))}) {
+      const path = join(assetRoot, key);
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      writeFileSync(path, new Uint8Array(getRawAsset(key)), { mode: 0o600 });
+    }
+  } catch (error) { rmSync(assetRoot, { recursive: true, force: true }); throw error; }
+  process.env.OTUI_ASSET_ROOT = assetRoot;
+  ${process.platform === 'linux' ? 'process.env.OPENTUI_LIBC = \'glibc\';' : ''}
+  await import(pathToFileURL(join(assetRoot, 'register-ffi.mjs')).href);
+  const { main } = await import(pathToFileURL(join(assetRoot, 'main.mjs')).href);
+  process.exitCode = await main();
+})().catch(error => { console.error(error); process.exitCode = 1; });
+`)
 const output = join(staging, target.binaryName)
+const blob = join(buildDirectory, 'sea-prep.blob')
 const configPath = join(buildDirectory, 'sea-config.json')
 await writeFile(configPath, `${JSON.stringify({
-  main: bundle,
-  mainFormat: 'module',
-  executable: process.execPath,
-  output,
+  main: bootstrap,
+  output: blob,
   disableExperimentalSEAWarning: true,
   useSnapshot: false,
   useCodeCache: false,
-  execArgv: ['--experimental-ffi', '--no-warnings'],
+  execArgv: ['--no-warnings'],
   execArgvExtension: 'none',
   assets: Object.fromEntries(assets.map(({ key, source }) => [key, source])),
 }, null, 2)}\n`)
-run(process.execPath, ['--build-sea', configPath])
+run(process.execPath, ['--experimental-sea-config', configPath])
+await copyFile(process.execPath, output)
+let entitlements
 if (process.platform === 'darwin') {
-  const entitlements = join(buildDirectory, 'node-entitlements.plist')
+  entitlements = join(buildDirectory, 'node-entitlements.plist')
   run('codesign', ['--display', '--entitlements', entitlements, '--xml', process.execPath])
   run('plutil', ['-lint', entitlements])
+  run('codesign', ['--remove-signature', output])
+}
+await inject(output, 'NODE_SEA_BLOB', await readFile(blob), {
+  sentinelFuse: 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2',
+  ...(process.platform === 'darwin' ? { machoSegmentName: 'NODE_SEA' } : {}),
+})
+if (process.platform === 'darwin') {
   run('codesign', ['--sign', '-', '--force', '--entitlements', entitlements, output])
   run('codesign', ['--verify', '--strict', output])
 }
@@ -138,6 +199,7 @@ async function copyNotices(name, from) {
 }
 for (const name of Object.keys(pkg.dependencies)) await copyNotices(name, root)
 await copyNotices(target.nativePackage, await packageDirectory('@opentui/core', root))
+await copyNotices(koffiNativePackage, koffiDirectory)
 const archive = join(dist, target.archiveName)
 run('tar', ['-a', '-cf', archive, '-C', dist, target.directory])
 const checksum = createHash('sha256').update(await readFile(archive)).digest('hex')
