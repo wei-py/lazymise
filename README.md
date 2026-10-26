@@ -195,6 +195,8 @@ pnpm smoke:release
 
 `mise install` can provision the pinned Node/pnpm toolchain; `mise run check` runs lint and tests. Tests use isolated fixture processes and settings rather than installing real mise tools. OpenTUI's portable Node FFI interface runs through a Koffi-backed adapter on Node 24; no `--experimental-ffi` flag is needed. The release builder uses esbuild, Node 24's CommonJS SEA bootstrap, and postject. It embeds the ESM application, OpenTUI assets, and Koffi addon, extracts them into a private process-owned directory before loading the application, and preserves Node's signing entitlements on macOS. No Web sidecar is shipped.
 
+CI/CD runs lint, tests, and standalone archive builds, but does not run `smoke:release`. Run `pnpm smoke:release` manually after a local build when release smoke coverage is needed.
+
 ## 中文说明
 
 `lazymise` 是一个使用 JavaScript ESM 与 OpenTUI 0.5.11 的 mise 终端界面，用工作流组织工具版本、更新、项目任务、环境和配置操作。
