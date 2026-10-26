@@ -53,25 +53,7 @@ export async function main(args = process.argv.slice(2)) {
     )
     return 1
   }
-  if (!process.execArgv.includes('--experimental-ffi')) {
-    const child = startProcess(process.execPath, [
-      '--experimental-ffi',
-      ...process.execArgv,
-      import.meta.filename,
-      ...args,
-    ], { inherit: true })
-    const interrupt = () => child.child.kill('SIGINT')
-    const terminate = () => child.child.kill('SIGTERM')
-    process.on('SIGINT', interrupt)
-    process.on('SIGTERM', terminate)
-    try {
-      return (await child.completion).exitCode
-    }
-    finally {
-      process.off('SIGINT', interrupt)
-      process.off('SIGTERM', terminate)
-    }
-  }
+  await import('./register-ffi.js')
 
   const projectDir = resolve(args[0] || process.cwd())
   process.chdir(projectDir)

@@ -637,7 +637,8 @@ async function isolated(run, setup = () => {}) {
       try { ${run} } finally { ui.renderer.destroy(); }
     `
     const { stdout, stderr, exitCode: code } = await runProcess(process.execPath, [
-      '--experimental-ffi',
+      '--import',
+      new URL('../register-ffi.js', import.meta.url).href,
       '--no-warnings',
       '--input-type=module',
       '--eval',
