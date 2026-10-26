@@ -9,7 +9,6 @@ on:
       tag:
         description: Existing release tag to build and publish
         required: true
-        default: v1.1.1
         type: string
 
 permissions:
@@ -19,8 +18,24 @@ env:
   RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
 
 jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+      - name: Check tag matches package version
+        run: node scripts/check-release-tag.js
+
   build:
     name: Build ${{ matrix.asset }}
+    needs: validate
     strategy:
       fail-fast: false
       matrix:

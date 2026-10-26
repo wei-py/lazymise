@@ -197,6 +197,8 @@ pnpm smoke:release
 
 CI/CD runs lint, tests, and standalone archive builds, but does not run `smoke:release`. Run `pnpm smoke:release` manually after a local build when release smoke coverage is needed.
 
+Release tags must be exactly `v` followed by the `package.json` version: version `1.2.3` requires `v1.2.3`, not `v.1.2.3`. The workflow validates this before starting any platform builds, and `pnpm build` enforces the same rule locally. Manual runs require an explicit existing tag; they check out that tag, not the branch selected in the Actions UI. If a tag is mistyped, create and push the correctly named tag on the intended release commit. Re-running the incorrect tag cannot fix the mismatch; do not bypass the check or rename archives, because archive names and the executable's version must agree.
+
 ## 中文说明
 
 `lazymise` 是一个使用 JavaScript ESM 与 OpenTUI 0.5.11 的 mise 终端界面，用工作流组织工具版本、更新、项目任务、环境和配置操作。
@@ -259,6 +261,8 @@ pnpm install --frozen-lockfile
 mise run check
 mise run dev
 ```
+
+发布 tag 必须是 `v` 加上 `package.json` 的版本号：例如版本 `1.2.3` 对应 `v1.2.3`，不是 `v.1.2.3`。工作流会在启动各平台构建前统一检查，本地 `pnpm build` 也保留同样的检查。手动运行必须明确填写已有 tag，检出的是该 tag，而不是 Actions 页面选择的分支。tag 拼错时，应在预期的发布提交上创建并推送正确 tag；重跑错误 tag 无法解决。不要跳过检查或仅修改压缩包名称，否则归档名称与程序版本会不一致。
 
 ## License
 

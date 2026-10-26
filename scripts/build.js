@@ -7,14 +7,12 @@ import { getNodeAssets } from '@opentui/core/node-assets'
 import { build } from 'esbuild'
 import { inject } from 'postject'
 import { releaseTarget } from '../src/release.js'
+import './check-release-tag.js'
 
 const root = join(import.meta.dirname, '..')
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
 if (process.versions.node !== '24.22.1')
   throw new Error('Node.js 24.22.1 is required to build releases.')
-const tag = process.env.RELEASE_TAG || (process.env.GITHUB_REF_TYPE === 'tag' ? process.env.GITHUB_REF_NAME : null)
-if (tag && tag !== `v${pkg.version}`)
-  throw new Error(`Release tag must match package.json: v${pkg.version}`)
 const target = releaseTarget()
 const dist = join(root, 'dist')
 const buildDirectory = join(dist, '.sea')
