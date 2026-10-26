@@ -23,7 +23,7 @@ A fast terminal interface for [mise](https://mise.jdx.dev/) tools, versions, upd
 - [mise](https://mise.jdx.dev/getting-started.html)
 - A UTF-8 terminal
 
-Standalone releases bundle Node.js and OpenTUI; they do not require a separately installed JavaScript runtime. Source development requires **Node.js >=26.4.0** and **pnpm 12.5.1**. The repository pins Node 26.7.0 for development and release builds. No Rust toolchain is required.
+Standalone releases bundle Node.js, OpenTUI, and the Koffi native addon; they do not require a separately installed JavaScript runtime. Source development requires **Node.js >=24.22.1** and **pnpm 12.5.1**. The repository pins Node **24.22.1 LTS** for development and release builds. No Rust toolchain or Bun runtime is required.
 
 ## Installation
 
@@ -193,7 +193,7 @@ pnpm build
 pnpm smoke:release
 ```
 
-`mise install` can provision the pinned Node/pnpm toolchain; `mise run check` runs lint and tests. Tests use isolated fixture processes and settings rather than installing real mise tools. The release builder uses esbuild and Node's ESM single-executable application (SEA), embeds all assets from `@opentui/core/node-assets`, resolves native packages from OpenTUI's actual dependency graph, and preserves Node's signing entitlements on macOS. No Web sidecar is shipped.
+`mise install` can provision the pinned Node/pnpm toolchain; `mise run check` runs lint and tests. Tests use isolated fixture processes and settings rather than installing real mise tools. OpenTUI's portable Node FFI interface runs through a Koffi-backed adapter on Node 24; no `--experimental-ffi` flag is needed. The release builder uses esbuild, Node 24's CommonJS SEA bootstrap, and postject. It embeds the ESM application, OpenTUI assets, and Koffi addon, extracts them into a private process-owned directory before loading the application, and preserves Node's signing entitlements on macOS. No Web sidecar is shipped.
 
 ## 中文说明
 
@@ -249,7 +249,7 @@ lazymise
 
 ### 开发
 
-预编译发行版内置 Node，无需 Rust、Bun 或额外的 JavaScript 运行时。源码开发要求 Node.js >=26.4.0 和 pnpm 12.5.1，`mise.toml` 固定 Node 26.7.0。可先安装工具链，再安装依赖并运行检查：
+预编译发行版内置 Node、OpenTUI 和 Koffi 原生扩展，无需 Rust、Bun 或额外的 JavaScript 运行时。源码开发要求 Node.js >=24.22.1 和 pnpm 12.5.1，`mise.toml` 固定 Node 24.22.1 LTS。OpenTUI 的 Node FFI 接口由 Koffi 适配，不依赖 `--experimental-ffi`。发行构建通过 esbuild、Node 24 CommonJS SEA 引导程序和 postject 嵌入 ESM 应用及原生资源，启动前解压到进程私有目录，并保留 macOS 签名权限。可先安装工具链，再安装依赖并运行检查：
 
 ```bash
 mise install

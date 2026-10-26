@@ -8,12 +8,12 @@ lazymise
 
 在目标项目目录运行；也可将项目目录作为 TUI 的位置参数。CLI 子命令继续直接调用 mise，其参数不受 TUI 配置目标影响。
 
-预编译发行版从 [wei-py/lazymise Releases](https://github.com/wei-py/lazymise/releases) 获取，内置 Node.js 与 OpenTUI，无需 Rust 或单独安装 JavaScript 运行时。源码运行使用 Node.js >=26.4.0、pnpm 12.5.1：
+预编译发行版从 [wei-py/lazymise Releases](https://github.com/wei-py/lazymise/releases) 获取，内置 Node.js、OpenTUI 与 Koffi 原生扩展，无需 Rust 或单独安装 JavaScript 运行时。源码运行使用 Node.js >=24.22.1、pnpm 12.5.1：
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev
-# 或从任意目录启动指定项目（自动启用 TUI 所需的 experimental FFI）
+# 或从任意目录启动指定项目（TUI 自动加载 Koffi FFI 适配）
 node /path/to/lazymise/src/main.js /path/to/project
 ```
 
@@ -252,8 +252,11 @@ mise tasks --json
 
 ## 本机验收记录
 
-- 环境：macOS arm64，Node.js `26.7.0`、pnpm `12.5.1`、OpenTUI `0.5.11`。源码直接使用 Node 启动，TUI 自动启用 FFI；未使用 Bun 启动或打包。
-- `pnpm test` 的 77 项行为测试、`pnpm run lint`、`pnpm run build` 与 `pnpm run smoke:release` 通过。发行冒烟使用解压后的 Node SEA，覆盖校验和／归档、隔离源码的帮助与版本、TTY 检查、真实参数／stdin／输出／退出码透传、原生 TUI 启动退出和资源清理。
+- 环境：macOS arm64，Node.js `24.22.1 LTS`、pnpm `12.5.1`、OpenTUI `0.5.11`、Koffi `3.3.4`。源码和独立发行包均使用 Node，不使用 Bun 或 `--experimental-ffi`。
+- `pnpm test` 的 79 项测试、`mise run --skip-tools lint`、`mise run --skip-tools build` 与 `mise run --skip-tools smoke:release` 通过。FFI 回归覆盖共享内存视图、切片指针偏移、64 位整数与原生回调。发行冒烟使用解压后的 Node 24 SEA，覆盖校验和／归档、隔离源码的帮助与版本、TTY 检查、真实参数／stdin／输出／退出码透传、原生 TUI 启动退出、终端恢复和资源清理。
+
+以下为此前版本的额外验收记录，不代表本次迁移重新执行了这些手动场景：
+
 - 真实 PTY 检查中英分类帮助、翻页、120×40 → 80×24 → 60×16 → 80×24 → 120×40 缩放、输入 `jq/?123` 不触发全局动作，以及浅／深终端下固定 Gruvbox Light。运行任务时退出默认取消，Enter 不结束任务；`x` 实际终止任务并显示已取消。
 - 对仍在运行任务的源码 TUI 发送 SIGTERM，子进程收到终止信号，程序返回 `143`、恢复终端输入属性并离开备用屏幕，未再出现任务回调更新已销毁渲染节点的问题。任务使用临时目录内的受控 mise 可执行程序；未安装或修改真实工具。
 - 导航一致性已用新构建的 `2.0.1` SEA 实测：30 条工具与 30 条任务的隔离夹具中，120×40 终端的 Tools 从收起 1 行展开为 25 行、Tasks 展开为 26 行；`0` 聚焦详情仍保持原组展开。`l/Enter` 进入详情，详情 Enter 不返回，`h/←` 返回原组，Tab/Shift+Tab 循环；120×40 → 100×30 → 80×24 → 60×16 → 120×40 后仍保留导航组。列表末尾继续向下不会绕回；帮助包含正确的横向键说明，输入 `hjkl/?123` 不触发全局动作；退出 `0` 后恢复终端且原配置字节未变。
