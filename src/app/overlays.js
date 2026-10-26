@@ -30,7 +30,10 @@ export function handleOverlayKey(app, key) {
   if (!ov)
     return
   if (key.ctrl && key.name === 'c') {
-    cancelOverlayFlow(app)
+    if (ov.type === 'Search')
+      handleSearchKey(app, { name: 'escape' })
+    else
+      cancelOverlayFlow(app)
     return
   }
   if (
@@ -98,6 +101,8 @@ export function toggleSearch(app) {
     range: 'local',
     previousSearch: app.state.search,
     previousSelected: app.state.selected,
+    previousDetailScroll: app.state.detailScroll,
+    previousListStart: app.state.listStart,
   }
   app.update()
 }
@@ -130,7 +135,8 @@ export function handleSearchKey(app, key) {
   if (result.cancel) {
     app.state.search = ov.previousSearch
     app.state.selected = ov.previousSelected
-    app.state.detailScroll = 0
+    app.state.detailScroll = ov.previousDetailScroll
+    app.state.listStart = ov.previousListStart
     app.clampSelection()
     closeOverlay(app)
     return
@@ -192,9 +198,19 @@ export function editSearch(app, ov, key) {
 export function handleHelpKey(app, key) {
   if (key.ctrl || key.meta)
     return
-  if (key.name === 'escape' || key.name === 'q')
+  const ov = app.state.overlay
+  if (['escape', 'enter', 'q'].includes(key.name)) {
     closeOverlay(app)
-  else scrollOverlay(app, app.state.overlay, key.name)
+  }
+  else if (['left', 'right', '[', ']'].includes(key.name)) {
+    ov.scrolls[ov.category] = ov.scroll || 0
+    ov.category = moveIndex(ov.category, key.name === 'left' || key.name === '[' ? -1 : 1, 3)
+    ov.scroll = ov.scrolls[ov.category]
+    app.update()
+  }
+  else {
+    scrollOverlay(app, ov, key.name)
+  }
 }
 
 export function scrollOverlay(app, ov, name) {
@@ -208,10 +224,10 @@ export function scrollOverlay(app, ov, name) {
       ov.scroll = Math.max(0, (ov.scroll || 0) - 1)
       break
     case 'pageup':
-      ov.scroll = Math.max(0, (ov.scroll || 0) - 10)
+      ov.scroll = Math.max(0, (ov.scroll || 0) - Math.max(1, ov.pageSize || 10))
       break
     case 'pagedown':
-      ov.scroll = Math.min(Number.MAX_SAFE_INTEGER, (ov.scroll || 0) + 10)
+      ov.scroll = Math.min(Number.MAX_SAFE_INTEGER, (ov.scroll || 0) + Math.max(1, ov.pageSize || 10))
       break
     case 'home':
       ov.scroll = 0
@@ -920,14 +936,22 @@ export function handleConfirmKey(app, key) {
     return
   const ov = app.state.overlay
   const { name } = key
-  if (name === 'enter' || name === 'y') {
+  if (name === 'left' || name === 'h') {
+    ov.confirmSelected = false
+    app.update()
+  }
+  else if (name === 'right' || name === 'l' || name === 'tab') {
+    ov.confirmSelected = name === 'tab' ? !ov.confirmSelected : true
+    app.update()
+  }
+  else if (name === 'y' || (name === 'enter' && ov.confirmSelected)) {
     cancelOverlayFlow(app)
     if (ov.onConfirm)
       ov.onConfirm()
     else if (ov.command)
       void executeCommand(app, [ov.command, ...(ov.args || [])], false)
   }
-  else if (name === 'escape' || name === 'n' || name === 'q') {
+  else if (name === 'enter' || name === 'escape' || name === 'n' || name === 'q') {
     closeOverlay(app)
   }
   else {
@@ -960,7 +984,7 @@ export async function runPageCommand(app) {
 }
 
 export function showHelp(app) {
-  app.state.overlay = { type: 'Help', parent: null, scroll: 0 }
+  app.state.overlay = { type: 'Help', parent: null, category: 0, scroll: 0, scrolls: [0, 0, 0] }
   app.update()
 }
 
