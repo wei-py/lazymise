@@ -102,10 +102,10 @@ export function createView(renderer) {
 
     if (mode === 'wide') {
       const leftWidth = Math.min(46, Math.max(34, Math.floor(width * 0.36)))
-      const baseHeight = Math.floor(available / GROUPS.length)
+      const expandedHeight = available - 3 * (GROUPS.length - 1)
       let top = 1
       for (let index = 0; index < GROUPS.length; index++) {
-        const groupHeight = baseHeight + (index === s.focusedGroup ? available % GROUPS.length : 0)
+        const groupHeight = index === s.focusedGroup ? expandedHeight : 3
         renderGroup(index, 0, top, leftWidth, groupHeight)
         top += groupHeight
       }

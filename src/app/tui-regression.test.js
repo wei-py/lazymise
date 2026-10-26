@@ -77,6 +77,39 @@ function highlighted(ui, text) {
     )
 }
 
+test('focused navigation reveals more rows and remains expanded when detail gains focus', async () => {
+  await fixture(async ({ app, ui, frame }) => {
+    const tools = Array.from({ length: 30 }, (_, index) => ({
+      name: `fixture-tool-${String(index).padStart(2, '0')}`,
+      version: '1',
+      installed: true,
+    }))
+    Object.assign(app.state.snapshot, {
+      tools,
+      projectTools: tools,
+      tasks: Array.from({ length: 30 }, (_, index) => ({ name: `fixture-task-${String(index).padStart(2, '0')}` })),
+    })
+    const visibleRows = (screen, prefix) => screen.split('\n').filter(line => line.includes(prefix)).length
+    const collapsedTools = visibleRows(await frame(), 'fixture-tool-')
+    ui.mockInput.pressKey('1')
+    const expanded = await frame()
+    expect(visibleRows(expanded, 'fixture-tool-')).toBeGreaterThan(collapsedTools)
+    expect(visibleRows(expanded, 'fixture-tool-')).toBeGreaterThanOrEqual(12)
+    ui.mockInput.pressKey('2')
+    const tasks = await frame()
+    expect(visibleRows(tasks, 'fixture-tool-')).toBe(collapsedTools)
+    expect(visibleRows(tasks, 'fixture-task-')).toBeGreaterThanOrEqual(12)
+    ui.mockInput.pressKey('0')
+    expect(visibleRows(await frame(), 'fixture-task-')).toBe(visibleRows(tasks, 'fixture-task-'))
+    expect(app.state.page).toBe('Dashboard')
+    ui.resize(100, 30)
+    expect(visibleRows(await frame(), 'fixture-task-')).toBeGreaterThanOrEqual(8)
+    ui.resize(120, 40)
+    expect(visibleRows(await frame(), 'fixture-task-')).toBe(visibleRows(tasks, 'fixture-task-'))
+    expect(app.state.focusedGroup).toBe(1)
+  }, 120, 40)
+})
+
 test('settings overlay cycles values, persists, and L toggles language', async () => {
   await fixture(async ({ app, ui, frame, path }) => {
     expect(app.state.language).toBe('en')
