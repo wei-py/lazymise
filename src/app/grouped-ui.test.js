@@ -1,10 +1,16 @@
+import { afterEach, test } from 'bun:test'
 import assert from 'node:assert/strict'
-import { test } from '../../support/node-test.js'
 import { Application } from './controller.js'
 import { confirmDelete } from './overlays.js'
 import { FOCUS, GROUPS, PAGE, PAGE_ORDER } from './state.js'
 
-function fixture(t) {
+let application
+afterEach(async () => {
+  await application?.close()
+  application = null
+})
+
+function fixture() {
   let exits = 0
   const app = new Application(() => ({
     width: 120,
@@ -22,7 +28,7 @@ function fixture(t) {
     configs: [{ path: '/project/mise.toml', tools: ['node'] }],
     updates: [{ name: 'node', current: '1', latest: '2' }],
   })
-  t.after(() => app.close())
+  application = app
   return { app, exits: () => exits }
 }
 
@@ -30,8 +36,8 @@ function press(app, name, modifiers = {}) {
   app.handleKey({ name, sequence: name.length === 1 ? name : '', ...modifiers })
 }
 
-test('group focus and detail focus do not replace the active target or its viewport', (t) => {
-  const { app } = fixture(t)
+test('group focus and detail focus do not replace the active target or its viewport', () => {
+  const { app } = fixture()
   app.jumpToPage(PAGE.Tools)
   app.state.selected = 2
   app.state.detailScroll = 7
@@ -51,8 +57,8 @@ test('group focus and detail focus do not replace the active target or its viewp
   assert.equal(app.state.focus, FOCUS.Group4)
 })
 
-test('horizontal keys enter detail and return to the remembered group while Tab cycles groups', (t) => {
-  const { app } = fixture(t)
+test('horizontal keys enter detail and return to the remembered group while Tab cycles groups', () => {
+  const { app } = fixture()
   app.jumpToPage(PAGE.Tools)
   press(app, '2')
   press(app, 'right')
@@ -76,8 +82,8 @@ test('horizontal keys enter detail and return to the remembered group while Tab 
   assert.equal(app.state.focus, FOCUS.Group1)
 })
 
-test('paging uses the detail viewport rather than the left group row count', (t) => {
-  const { app } = fixture(t)
+test('paging uses the detail viewport rather than the left group row count', () => {
+  const { app } = fixture()
   app.jumpToPage(PAGE.Tools)
   app.state.detailScroll = 5
   press(app, '0')
@@ -87,8 +93,8 @@ test('paging uses the detail viewport rather than the left group row count', (t)
   assert.equal(app.state.detailScroll, 5)
 })
 
-test('list movement and paging stop at the first and last row', (t) => {
-  const { app } = fixture(t)
+test('list movement and paging stop at the first and last row', () => {
+  const { app } = fixture()
   app.jumpToPage(PAGE.Tools)
   press(app, 'pageup')
   assert.equal(app.state.selected, 0)
@@ -102,8 +108,8 @@ test('list movement and paging stop at the first and last row', (t) => {
   assert.equal(app.state.selected, 0)
 })
 
-test('all nine pages are reachable through four real group tabs', (t) => {
-  const { app } = fixture(t)
+test('all nine pages are reachable through four real group tabs', () => {
+  const { app } = fixture()
   const visited = new Set()
   for (const [index, group] of GROUPS.entries()) {
     press(app, String(index + 1))
@@ -118,8 +124,8 @@ test('all nine pages are reachable through four real group tabs', (t) => {
   assert.deepEqual([...visited].sort(), [...PAGE_ORDER].sort())
 })
 
-test('page changes restore independent filters, rows and detail scroll', (t) => {
-  const { app } = fixture(t)
+test('page changes restore independent filters, rows and detail scroll', () => {
+  const { app } = fixture()
   app.jumpToPage(PAGE.Tools)
   Object.assign(app.state, { search: 'y', selected: 1, detailScroll: 5, listStart: 1 })
   press(app, ']')
@@ -138,8 +144,8 @@ test('page changes restore independent filters, rows and detail scroll', (t) => 
   assert.equal(app.state.detailScroll, 3)
 })
 
-test('scope switches preserve a hidden Tools page independently of the active page', (t) => {
-  const { app } = fixture(t)
+test('scope switches preserve a hidden Tools page independently of the active page', () => {
+  const { app } = fixture()
   app.jumpToPage(PAGE.Tools)
   app.state.selected = 1
   app.state.search = 'y'
@@ -153,8 +159,8 @@ test('scope switches preserve a hidden Tools page independently of the active pa
   assert.equal(app.visibleItems()[app.state.selected].name, 'ruby')
 })
 
-test('a hidden log selection follows its entry when new commands finish', (t) => {
-  const { app } = fixture(t)
+test('a hidden log selection follows its entry when new commands finish', () => {
+  const { app } = fixture()
   const original = { command: 'mise doctor', output: 'original output', success: true }
   app.state.logs = [original]
   app.jumpToPage(PAGE.Logs)
@@ -167,8 +173,8 @@ test('a hidden log selection follows its entry when new commands finish', (t) =>
   assert.equal(app.state.detailScroll, 4)
 })
 
-test('search owns printable shortcuts and cancel restores the original viewport', (t) => {
-  const { app, exits } = fixture(t)
+test('search owns printable shortcuts and cancel restores the original viewport', () => {
+  const { app, exits } = fixture()
   app.jumpToPage(PAGE.Tools)
   Object.assign(app.state, { selected: 1, detailScroll: 6, listStart: 1 })
   press(app, '/')
@@ -186,8 +192,8 @@ test('search owns printable shortcuts and cancel restores the original viewport'
   assert.equal(app.state.listStart, 1)
 })
 
-test('help remembers category scroll and restores focus without selecting another target', (t) => {
-  const { app } = fixture(t)
+test('help remembers category scroll and restores focus without selecting another target', () => {
+  const { app } = fixture()
   app.jumpToPage(PAGE.Tools)
   press(app, '2')
   press(app, '?')
@@ -206,8 +212,8 @@ test('help remembers category scroll and restores focus without selecting anothe
   assert.equal(app.state.page, PAGE.Tools)
 })
 
-test('destructive confirmation starts on cancel and requires an explicit affirmative choice', (t) => {
-  const { app } = fixture(t)
+test('destructive confirmation starts on cancel and requires an explicit affirmative choice', () => {
+  const { app } = fixture()
   let deletes = 0
   confirmDelete(app, 'node@1', () => deletes++)
   press(app, 'enter')

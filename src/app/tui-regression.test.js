@@ -1,3 +1,4 @@
+import { expect, test } from 'bun:test'
 import { Buffer } from 'node:buffer'
 import {
   chmodSync,
@@ -12,7 +13,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createTestRenderer } from '@opentui/core/testing'
 import stringWidth from 'string-width'
-import { expect, test } from '../../support/node-test.js'
 import { t } from '../config/i18n.js'
 import { loadSettings } from '../config/settings.js'
 import { normalizeKey } from '../main.js'
@@ -637,10 +637,6 @@ async function isolated(run, setup = () => {}) {
       try { ${run} } finally { ui.renderer.destroy(); }
     `
     const { stdout, stderr, exitCode: code } = await runProcess(process.execPath, [
-      '--import',
-      new URL('../register-ffi.js', import.meta.url).href,
-      '--no-warnings',
-      '--input-type=module',
       '--eval',
       script,
     ], {

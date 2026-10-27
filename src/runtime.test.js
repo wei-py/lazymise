@@ -1,15 +1,15 @@
+import { test } from 'bun:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from '../support/node-test.js'
 import { createJobRunner } from '../vendor/lazy-kit/jobs.js'
 import { runProcess, startProcess } from './process.js'
 import { releaseTarget } from './release.js'
 
 const main = join(import.meta.dirname, 'main.js')
 
-test('Node CLI help/version bypass native FFI; non-TTY launch and missing mise fail clearly', async () => {
+test('Bun CLI help/version bypass native FFI; non-TTY launch and missing mise fail clearly', async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'lazymise-cli-'))
   const env = { ...process.env, PATH: temporary, HOME: temporary, LAZYMISE_CONFIG_DIR: temporary }
   try {
@@ -36,7 +36,7 @@ test('Node CLI help/version bypass native FFI; non-TTY launch and missing mise f
 })
 
 test('child execution preserves stdin, both output channels, and nonzero status', async () => {
-  const result = await runProcess(process.execPath, ['--input-type=module', '--eval', `
+  const result = await runProcess(process.execPath, ['--eval', `
     for await (const chunk of process.stdin) process.stdout.write(chunk);
     process.stderr.write('rejected\\n'); process.exitCode = 23;
   `], { input: '中文 input\n' })
