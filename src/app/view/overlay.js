@@ -297,8 +297,8 @@ export function renderOverlay(nodes, s, app, width, height) {
   // Hints remain on the bottom row even while long content scrolls above them.
   if (confirming) {
     lines.push([
-      fg(overlay.confirmSelected ? COLORS.muted : COLORS.focus)(`${overlay.confirmSelected ? '  ' : '▸ '}${t(language, 'confirm_cancel')}   `),
-      fg(overlay.confirmSelected ? COLORS.focus : COLORS.muted)(`${overlay.confirmSelected ? '▸ ' : '  '}${t(language, 'confirm_accept')}`),
+      fg(overlay.confirmSelected ? COLORS.muted : COLORS.focus)(`${overlay.confirmSelected ? '  ' : '› '}${t(language, 'confirm_cancel')}   `),
+      fg(overlay.confirmSelected ? COLORS.focus : COLORS.muted)(`${overlay.confirmSelected ? '› ' : '  '}${t(language, 'confirm_accept')}`),
     ])
   }
   const chips = overlayHint(overlay, language)

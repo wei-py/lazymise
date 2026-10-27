@@ -234,7 +234,7 @@ export function renderBox(nodes, id, boxResult) {
       boxResult.inner.top + boxResult.inner.selected,
       boxResult.inner.width,
       1,
-      [padColumns(boxResult.inner.lines[boxResult.inner.selected] || '', boxResult.inner.width)],
+      [padColumns(`›${boxResult.inner.selectedLine}`, boxResult.inner.width)],
       COLORS.selectionText,
       COLORS.selection,
     )

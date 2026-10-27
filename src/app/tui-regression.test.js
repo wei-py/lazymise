@@ -110,6 +110,24 @@ test('focused navigation reveals more rows and remains expanded when detail gain
   }, 120, 40)
 })
 
+test('navigation selection uses a slim marker without changing row backgrounds', async () => {
+  await fixture(async ({ app, ui, frame }) => {
+    app.state.snapshot.tasks = [{ name: 'marker-first' }, { name: 'marker-second' }]
+    app.jumpToPage('Tasks')
+    let rendered = await frame()
+    expect(rendered).toContain('›  marker-first')
+    expect(rendered).not.toContain('›  marker-second')
+    expect(rendered).not.toContain('▶')
+    expect(highlighted(ui, 'marker-first')).toBe(true)
+    ui.mockInput.pressKey('j')
+    rendered = await frame()
+    expect(rendered).toContain('›  marker-second')
+    expect(rendered).not.toContain('›  marker-first')
+    expect(highlighted(ui, 'marker-first')).toBe(false)
+    expect(highlighted(ui, 'marker-second')).toBe(true)
+  })
+})
+
 test('settings overlay cycles values, persists, and L toggles language', async () => {
   await fixture(async ({ app, ui, frame, path }) => {
     expect(app.state.language).toBe('en')
@@ -118,7 +136,7 @@ test('settings overlay cycles values, persists, and L toggles language', async (
     expect(app.state.overlay.type).toBe('Settings')
     const opened = await frame()
     expect(opened).toContain('┌ Settings')
-    expect(opened).toContain('Language: English')
+    expect(opened).toContain('›Language: English')
     expect(highlighted(ui, 'Language: English')).toBe(true)
     ui.mockInput.pressEnter()
     expect(app.state.language).toBe('zh')
@@ -131,7 +149,7 @@ test('settings overlay cycles values, persists, and L toggles language', async (
     ui.mockInput.pressKey('j')
     expect(app.state.overlay.cursor).toBe(1)
     const themeLabel = app.state.language === 'zh' ? '主题' : 'Theme'
-    expect(await frame()).toContain(`${themeLabel}: ${app.state.theme}`)
+    expect(await frame()).toContain(`›${themeLabel}: ${app.state.theme}`)
     ui.mockInput.pressEnter()
     expect(app.state.theme).not.toBe('default')
     expect(JSON.parse(readFileSync(path, 'utf8')).theme).toBe(app.state.theme)
@@ -534,7 +552,11 @@ test('small sizes keep confirmations bounded and cancel-first', async () => {
               ui,
               t(language, type === 'ConfirmDelete' ? 'confirm_delete_title' : 'confirm_command_title'),
             )
-            expect(rendered).toContain(t(language, 'confirm_cancel'))
+            expect(rendered).toContain(`› ${t(language, 'confirm_cancel')}`)
+            expect(rendered).not.toContain('▸')
+            ui.mockInput.pressArrow('right')
+            expect(await frame()).toContain(`› ${t(language, 'confirm_accept')}`)
+            ui.mockInput.pressArrow('left')
             expect(!!app.state.overlay.confirmSelected).toBe(false)
             ui.mockInput.pressKey('END')
             expect(await frame()).toContain(t(language, 'confirm_cancel'))

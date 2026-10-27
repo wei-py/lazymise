@@ -51,7 +51,7 @@ export function listContent(s, items, capacity, width) {
     }
     case 'Tasks': {
       title = t(language, 'Tasks')
-      renderItem = t => `▶ ${clipColumns(t.name, 30)}`
+      renderItem = t => `  ${clipColumns(t.name, 30)}`
       break
     }
     case 'Environment':

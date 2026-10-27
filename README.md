@@ -103,6 +103,8 @@ At **100 columns × 30 rows or larger**, all four groups are stacked beside the 
 
 In the four-group layout, the remembered navigation group expands to use the remaining height; the other three groups retain a three-line preview. Focusing detail keeps that group expanded, and resizing preserves the remembered group.
 
+Selected rows and confirmation choices use the slim `›` marker while retaining the theme's selection background. The `▶` shown for a running job is a status symbol, not a navigation marker.
+
 ## Essential keys
 
 These are main-workspace keys; overlays and text inputs take precedence. Item actions require a left-hand group to be focused.
