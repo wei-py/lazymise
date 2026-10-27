@@ -8,13 +8,13 @@ lazymise
 
 在目标项目目录运行；也可将项目目录作为 TUI 的位置参数。CLI 子命令继续直接调用 mise，其参数不受 TUI 配置目标影响。
 
-预编译发行版从 [wei-py/lazymise Releases](https://github.com/wei-py/lazymise/releases) 获取，内置 Node.js、OpenTUI 与 Koffi 原生扩展，无需 Rust 或单独安装 JavaScript 运行时。源码运行使用 Node.js >=24.22.1、pnpm 12.5.1：
+预编译发行版从 [wei-py/lazymise Releases](https://github.com/wei-py/lazymise/releases) 获取，内置 Bun、OpenTUI 与原生渲染库，无需 Rust、Node.js 或单独安装 JavaScript 运行时。源码运行及发行构建使用 Bun 1.4.2：
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm dev
-# 或从任意目录启动指定项目（TUI 自动加载 Koffi FFI 适配）
-node /path/to/lazymise/src/main.js /path/to/project
+bun install --frozen-lockfile
+bun run dev
+# 或从任意目录启动指定项目（TUI 直接使用 Bun FFI）
+bun /path/to/lazymise/src/main.js /path/to/project
 ```
 
 `lazymise --help`、`lazymise --version` 和 CLI 子命令不需要 TTY；TUI 同时要求交互式 stdin/stdout。CLI 透传保留参数、stdin、stdout/stderr 和子进程退出码；找不到 mise 会明确失败，不会意外进入 TUI。
@@ -23,7 +23,7 @@ node /path/to/lazymise/src/main.js /path/to/project
 
 `lazymise update` 仅用于独立发行版，从 **wei-py/lazymise** 下载当前平台的最新版本及 SHA256SUMS，验证校验和与候选版本后，再在可执行文件同目录暂存并替换。替换失败或被取消时恢复旧文件；安装目录必须可写。若 Windows 锁定了仍在运行的旧文件，更新器会报告唯一的 `.lazymise-rollback-*/previous-executable` 备份路径，可在进程退出后移除。
 
-源码运行会拒绝自替换，避免覆盖 Node 本身；请使用 `git pull` 和 `pnpm install --frozen-lockfile`。包管理器安装建议使用对应的升级命令。此操作不会安装 Cargo 包，也不会改写 mise 配置。
+源码运行会拒绝自替换，避免覆盖 Bun 本身；请使用 `git pull` 和 `bun install --frozen-lockfile`。包管理器安装建议使用对应的升级命令。此操作不会安装 Cargo 包，也不会改写 mise 配置。
 
 
 ## 配置文件优先
@@ -233,6 +233,8 @@ Config 组内 `e` 编辑当前文件，`y` 复制文件全文；都不受是否�
 
 默认主题是固定的 **Gruvbox Light**（`gruvbox-light`），不随终端深色／浅色模式自动变化。没有主题设置或保存了旧通用值 `default` 时，都回退到该主题，加载时不会自动改写设置文件。已有明确命名的主题仍被保留，可通过设置手动更换。
 
+内置 **Gruvbox**、**Catppuccin Mocha／Latte**、**Tokyo Night／Tokyo Night Day**、**Solarized** 四组深浅主题。按 `:` → `j` 选中主题 → `Enter`/`l` 下一主题、`h` 上一主题，即时生效并保存。`?` →「操作」可查看切换步骤，「说明」可查看主题列表与默认值。
+
 `?` 打开中英双语分类帮助：**导航／操作／说明**（**Navigation / Actions / Notes**）。左右键或 `[`/`]` 换类；`j/k`、上下键、`PgUp/PgDn`、`Home/End` 滚动，每类各自保留滚动位置。分类、滚动、关闭提示和位置计数独立显示；`Esc/Enter/q` 关闭，恢复原页面焦点，而非执行页面动作。
 
 全局 footer 按页面与焦点显示真实动作；弹窗打开时改为当前弹窗的操作提示，不再显示被遮罩的全局导航。帮助只在弹窗内保留一份导航／滚动／关闭提示。过长路径和错误可按 PgUp/PgDn 查看，位置提示出现在弹窗边框。这是终端界面，不提供 Web 页面或 sidecar。
@@ -252,12 +254,14 @@ mise tasks --json
 
 ## 本机验收记录
 
-- 环境：macOS arm64，Node.js `24.22.1 LTS`、pnpm `12.5.1`、OpenTUI `0.5.11`、Koffi `3.3.4`。源码和独立发行包均使用 Node，不使用 Bun 或 `--experimental-ffi`。
-- `pnpm test` 的 79 项测试、`mise run --skip-tools lint`、`mise run --skip-tools build` 与 `mise run --skip-tools smoke:release` 通过。FFI 回归覆盖共享内存视图、切片指针偏移、64 位整数与原生回调。发行冒烟使用解压后的 Node 24 SEA，覆盖校验和／归档、隔离源码的帮助与版本、TTY 检查、真实参数／stdin／输出／退出码透传、原生 TUI 启动退出、终端恢复和资源清理。
+- 当前工具链：Bun `1.4.2`、OpenTUI `0.5.11`，使用 Bun FFI 和独立可执行文件编译；`bun.lock` 固定依赖解析。
+- 本地验收入口：`bun run test`、`bun run lint`、`bun run build`、`bun run smoke:release`。冒烟检查解压归档／校验和、隔离源码的帮助与版本、TTY 检查、真实参数／stdin／输出／退出码透传，以及源码与解压发行包的原生 TUI 启动退出和终端恢复。
+- 本次 macOS arm64 验收：`bun run test` 通过 78 项测试（4,654 次断言），`bun run lint`、`mise run --skip-tools build` 与 `mise run --skip-tools smoke:release` 通过。源码与解压后的 Bun 独立发行包均在 Bun 原生 PTY 中完成启动、退出和终端恢复；发行包命令与 TUI 在禁止读取源码目录的 macOS 沙箱中运行。
+- CI/CD 不运行任何冒烟检查；Linux glibc x86_64/aarch64、macOS x86_64/aarch64、Windows x86_64 保留原生构建矩阵。本机验证不代表其他平台已实际运行。
 
-以下为此前版本的额外验收记录，不代表本次迁移重新执行了这些手动场景：
+以下为此前版本的额外验收记录，不代表 Bun 迁移重新执行了这些手动场景：
 
 - 真实 PTY 检查中英分类帮助、翻页、120×40 → 80×24 → 60×16 → 80×24 → 120×40 缩放、输入 `jq/?123` 不触发全局动作，以及浅／深终端下固定 Gruvbox Light。运行任务时退出默认取消，Enter 不结束任务；`x` 实际终止任务并显示已取消。
 - 对仍在运行任务的源码 TUI 发送 SIGTERM，子进程收到终止信号，程序返回 `143`、恢复终端输入属性并离开备用屏幕，未再出现任务回调更新已销毁渲染节点的问题。任务使用临时目录内的受控 mise 可执行程序；未安装或修改真实工具。
 - 导航一致性已用新构建的 `2.0.1` SEA 实测：30 条工具与 30 条任务的隔离夹具中，120×40 终端的 Tools 从收起 1 行展开为 25 行、Tasks 展开为 26 行；`0` 聚焦详情仍保持原组展开。`l/Enter` 进入详情，详情 Enter 不返回，`h/←` 返回原组，Tab/Shift+Tab 循环；120×40 → 100×30 → 80×24 → 60×16 → 120×40 后仍保留导航组。列表末尾继续向下不会绕回；帮助包含正确的横向键说明，输入 `hjkl/?123` 不触发全局动作；退出 `0` 后恢复终端且原配置字节未变。
-- 本机记录仅覆盖 macOS arm64；Linux／Windows 的原生构建和冒烟由各自发布工作流执行，不将工作流配置视为本机已验证。
+- 历史本机记录仅覆盖 macOS arm64；其他平台的发布工作流只运行测试和原生构建，不运行冒烟。工作流配置不能视为本机已验证。

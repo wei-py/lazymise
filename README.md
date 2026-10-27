@@ -23,7 +23,7 @@ A fast terminal interface for [mise](https://mise.jdx.dev/) tools, versions, upd
 - [mise](https://mise.jdx.dev/getting-started.html)
 - A UTF-8 terminal
 
-Standalone releases bundle Node.js, OpenTUI, and the Koffi native addon; they do not require a separately installed JavaScript runtime. Source development requires **Node.js >=24.22.1** and **pnpm 12.5.1**. The repository pins Node **24.22.1 LTS** for development and release builds. No Rust toolchain or Bun runtime is required.
+Standalone releases bundle Bun and OpenTUI, including the native renderer; they do not require a separately installed JavaScript runtime. Source development and release builds use **Bun 1.4.2**, pinned in `mise.toml`, `package.json`, and CI. No Node.js or Rust toolchain is required.
 
 ## Installation
 
@@ -31,7 +31,7 @@ Standalone releases bundle Node.js, OpenTUI, and the Koffi native addon; they do
 
 Download the matching archive and `SHA256SUMS` from [GitHub Releases](https://github.com/wei-py/lazymise/releases). Verify its SHA-256 before extracting. Archives retain the versioned directory `lazymise-v<VERSION>-<TARGET>/` with `lazymise` (or `lazymise.exe`), README, LICENSE, and dependency notices inside.
 
-The release workflow targets Linux glibc x86_64/aarch64, macOS x86_64/aarch64, and Windows x86_64, with native build and smoke-test steps for each target. Check the release's actual assets for availability; this is not a claim that every platform has been verified locally. musl and Windows arm64 are not configured release targets.
+The release workflow targets Linux glibc x86_64/aarch64, macOS x86_64/aarch64, and Windows x86_64, with native builds for each target. CI/CD runs no smoke tests; source and extracted-release TUI smoke checks are local-only. Check the release's actual assets for availability; workflow configuration is not evidence of local verification. musl and Windows arm64 are not configured release targets.
 
 For example, after downloading the macOS arm64 archive:
 
@@ -48,16 +48,16 @@ Ensure the destination is on `PATH`; on Windows place `lazymise.exe` in a direct
 ```bash
 git clone https://github.com/wei-py/lazymise.git
 cd lazymise
-pnpm install --frozen-lockfile
-pnpm dev
-# Optional: expose the source CLI on PATH (still requires Node and this checkout).
-pnpm link --global
+bun install --frozen-lockfile
+bun run dev
+# Optional: expose the source CLI on PATH (still requires Bun and this checkout).
+bun link
 ```
 
-The executable launcher automatically enables Node's experimental FFI for the TUI. `--help`, `--version`, and CLI passthrough work without a TTY or native renderer. Starting the TUI requires interactive stdin and stdout. Direct source invocation is also supported:
+OpenTUI uses Bun's native FFI directly. `--help`, `--version`, and CLI passthrough work without a TTY or native renderer. Starting the TUI requires interactive stdin and stdout. Direct source invocation is also supported:
 
 ```bash
-node /path/to/lazymise/src/main.js /path/to/project
+bun /path/to/lazymise/src/main.js /path/to/project
 ```
 
 Then run `lazymise` from the project whose mise environment you want to manage:
@@ -71,7 +71,7 @@ lazymise
 
 `lazymise update` updates a standalone release from **wei-py/lazymise**. It downloads the matching archive and checksum, validates SHA-256 and the candidate executable's version, then stages replacement beside the executable. Failed or interrupted replacement restores the previous executable. The install directory must be writable; the command never installs a Cargo package or changes mise configuration. If Windows retains the running previous executable, the updater reports its unique `.lazymise-rollback-*/previous-executable` path; remove it after that process exits.
 
-Source checkouts refuse self-replacement (they must never overwrite the Node executable): use `git pull` followed by `pnpm install --frozen-lockfile`. If installed through a package manager such as Homebrew, prefer that manager's upgrade command.
+Source checkouts refuse self-replacement (they must never overwrite the Bun executable): use `git pull` followed by `bun install --frozen-lockfile`. If installed through a package manager such as Homebrew, prefer that manager's upgrade command.
 
 ## Command-line options
 
@@ -151,6 +151,8 @@ If saving fails, the previous setting remains active and the status shows the or
 
 The default is **Gruvbox Light** (`gruvbox-light`), fixed regardless of the terminal's light/dark appearance. A missing theme or the legacy generic `default` preference falls back to Gruvbox Light without rewriting the settings file on load. Existing explicit named palettes remain selected; choose another palette in settings if desired.
 
+Available dark/light pairs: **Gruvbox**, **Catppuccin Mocha / Latte**, **Tokyo Night / Tokyo Night Day**, and **Solarized**. To switch: `:` → `j` to Theme → `Enter`/`l` for next or `h` for previous. Built-in help (`?`) includes the steps under Actions and the palette list/default under Notes.
+
 Built-in help (`?`) is available in English and Chinese, with **Navigation / Actions / Notes** (**导航 / 操作 / 说明**) categories. Left/right or `[`/`]` changes category; `j/k`, up/down, `PageUp/PageDown`, and `Home/End` scroll. Each category remembers its scroll position, and the footer shows category/scroll/close hints and position. `Esc`, `Enter`, or `q` closes help and restores the underlying focus.
 
 Help keeps its controls inside the dialog; the background navigation footer is hidden while help is open.
@@ -185,19 +187,19 @@ Destructive confirmations start on Cancel. Use explicit `y`, or select Confirm b
 ## Development
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm test
-pnpm lint
-pnpm dev
-pnpm build
-pnpm smoke:release
+bun install --frozen-lockfile
+bun run test
+bun run lint
+bun run dev
+bun run build
+bun run smoke:release
 ```
 
-`mise install` can provision the pinned Node/pnpm toolchain; `mise run check` runs lint and tests. Tests use isolated fixture processes and settings rather than installing real mise tools. OpenTUI's portable Node FFI interface runs through a Koffi-backed adapter on Node 24; no `--experimental-ffi` flag is needed. The release builder uses esbuild, Node 24's CommonJS SEA bootstrap, and postject. It embeds the ESM application, OpenTUI assets, and Koffi addon, extracts them into a private process-owned directory before loading the application, and preserves Node's signing entitlements on macOS. No Web sidecar is shipped.
+`mise install` can provision the pinned Bun toolchain; `mise run check` runs lint and tests. Tests use Bun's test runner, isolated fixture processes and settings rather than installing real mise tools. The release builder uses `Bun.build({ compile: ... })` to embed the application and OpenTUI native assets directly. Linux builds select glibc explicitly, and x86_64 builds use Bun's baseline CPU target. Archives retain their historical names, directory layout, dependency notices, and SHA-256 checksums. No Web sidecar is shipped.
 
-CI/CD runs lint, tests, and standalone archive builds, but does not run `smoke:release`. Run `pnpm smoke:release` manually after a local build when release smoke coverage is needed.
+CI/CD runs lint, tests, and standalone archive builds, with no smoke commands. Run `bun run smoke:release` manually after a local build: it verifies the extracted archive with repository reads denied on macOS, checks CLI forwarding, and starts/quits both source and extracted-release TUIs in real PTYs. The smoke fixture is itself a Bun-compiled executable, so Windows needs no shell shim.
 
-Release tags must be exactly `v` followed by the `package.json` version: version `1.2.3` requires `v1.2.3`, not `v.1.2.3`. The workflow validates this before starting any platform builds, and `pnpm build` enforces the same rule locally. Manual runs require an explicit existing tag; they check out that tag, not the branch selected in the Actions UI. If a tag is mistyped, create and push the correctly named tag on the intended release commit. Re-running the incorrect tag cannot fix the mismatch; do not bypass the check or rename archives, because archive names and the executable's version must agree.
+Release tags must be exactly `v` followed by the `package.json` version: version `1.2.3` requires `v1.2.3`, not `v.1.2.3`. The workflow validates this before starting any platform builds, and `bun run build` enforces the same rule locally. Manual runs require an explicit existing tag; they check out that tag, not the branch selected in the Actions UI. If a tag is mistyped, create and push the correctly named tag on the intended release commit. Re-running the incorrect tag cannot fix the mismatch; do not bypass the check or rename archives, because archive names and the executable's version must agree.
 
 ## 中文说明
 
@@ -208,8 +210,8 @@ Release tags must be exactly `v` followed by the `package.json` version: version
 ```bash
 git clone https://github.com/wei-py/lazymise.git
 cd lazymise
-pnpm install --frozen-lockfile
-pnpm link --global
+bun install --frozen-lockfile
+bun link
 ```
 
 进入使用 mise 的项目目录后运行：
@@ -243,6 +245,8 @@ lazymise
 
 默认主题固定为 **Gruvbox Light**（`gruvbox-light`），不随终端深浅色变化。缺少主题或旧通用值 `default` 会回退到该主题，加载时不改写设置；已有明确命名的主题继续保留。语言与主题均可在设置中选择并持久化。
 
+可选深色／浅色配对：**Gruvbox**、**Catppuccin Mocha／Latte**、**Tokyo Night／Tokyo Night Day**、**Solarized**。切换步骤：按 `:` → `j` 选中主题 → `Enter`/`l` 下一主题、`h` 上一主题。`?` 帮助的「操作」列出步骤，「说明」列出可选主题及默认值。
+
 `?` 帮助按 **导航 / 操作 / 说明**（Navigation / Actions / Notes）分类；左右键或 `[`/`]` 换类，`j/k`、上下键、`PgUp/PgDn`、`Home/End` 滚动，分类各自记忆位置。`Esc/Enter/q` 关闭并恢复原焦点。输入时 `jq?123` 等内容都是文字，不触发全局键。
 
 帮助的操作提示只放在弹窗内，不再与底部全局导航提示重复。
@@ -253,16 +257,16 @@ lazymise
 
 ### 开发
 
-预编译发行版内置 Node、OpenTUI 和 Koffi 原生扩展，无需 Rust、Bun 或额外的 JavaScript 运行时。源码开发要求 Node.js >=24.22.1 和 pnpm 12.5.1，`mise.toml` 固定 Node 24.22.1 LTS。OpenTUI 的 Node FFI 接口由 Koffi 适配，不依赖 `--experimental-ffi`。发行构建通过 esbuild、Node 24 CommonJS SEA 引导程序和 postject 嵌入 ESM 应用及原生资源，启动前解压到进程私有目录，并保留 macOS 签名权限。可先安装工具链，再安装依赖并运行检查：
+预编译发行版内置 Bun、OpenTUI 与原生渲染库，无需 Rust、Node.js 或额外安装 JavaScript 运行时。源码开发及发行构建使用 Bun 1.4.2，版本由 `mise.toml`、`package.json` 和 CI 固定。OpenTUI 直接使用 Bun FFI；发行构建通过 `Bun.build` 独立编译嵌入应用及原生资源，保留压缩包命名、目录布局、依赖许可和校验和。CI/CD 仅运行 lint、测试和构建，绝不运行冒烟；本机 `bun run smoke:release` 检查解压发行包及源码的真实 PTY 启动、退出和终端恢复。可先安装工具链，再安装依赖并运行检查：
 
 ```bash
 mise install
-pnpm install --frozen-lockfile
+bun install --frozen-lockfile
 mise run check
 mise run dev
 ```
 
-发布 tag 必须是 `v` 加上 `package.json` 的版本号：例如版本 `1.2.3` 对应 `v1.2.3`，不是 `v.1.2.3`。工作流会在启动各平台构建前统一检查，本地 `pnpm build` 也保留同样的检查。手动运行必须明确填写已有 tag，检出的是该 tag，而不是 Actions 页面选择的分支。tag 拼错时，应在预期的发布提交上创建并推送正确 tag；重跑错误 tag 无法解决。不要跳过检查或仅修改压缩包名称，否则归档名称与程序版本会不一致。
+发布 tag 必须是 `v` 加上 `package.json` 的版本号：例如版本 `1.2.3` 对应 `v1.2.3`，不是 `v.1.2.3`。工作流会在启动各平台构建前统一检查，本地 `bun run build` 也保留同样的检查。手动运行必须明确填写已有 tag，检出的是该 tag，而不是 Actions 页面选择的分支。tag 拼错时，应在预期的发布提交上创建并推送正确 tag；重跑错误 tag 无法解决。不要跳过检查或仅修改压缩包名称，否则归档名称与程序版本会不一致。
 
 ## License
 
