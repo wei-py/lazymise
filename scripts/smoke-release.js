@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import { execFile as execFileCallback } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import * as pty from '@lydell/node-pty'
-import { inject } from 'postject'
 import { runProcess } from '../src/process.js'
 import { releaseTarget } from '../src/release.js'
 
@@ -41,31 +40,7 @@ else if (['config','tasks','registry','ls-remote'].includes(args[0])) console.lo
 else console.log('{}');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 `)
-  const fixtureConfig = join(fixtures, 'sea.json')
-  const fixtureBlob = join(fixtures, 'sea.blob')
-  await writeFile(fixtureConfig, JSON.stringify({
-    main: fixtureSource,
-    output: fixtureBlob,
-    disableExperimentalSEAWarning: true,
-    useSnapshot: false,
-    useCodeCache: false,
-  }))
-  await execFile(process.execPath, ['--experimental-sea-config', fixtureConfig])
-  await copyFile(process.execPath, fixtureBinary)
-  let entitlements
-  if (process.platform === 'darwin') {
-    entitlements = join(fixtures, 'entitlements.plist')
-    await execFile('codesign', ['--display', '--entitlements', entitlements, '--xml', process.execPath])
-    await execFile('codesign', ['--remove-signature', fixtureBinary])
-  }
-  await inject(fixtureBinary, 'NODE_SEA_BLOB', await readFile(fixtureBlob), {
-    sentinelFuse: 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2',
-    ...(process.platform === 'darwin' ? { machoSegmentName: 'NODE_SEA' } : {}),
-  })
-  if (process.platform === 'darwin')
-    await execFile('codesign', ['--sign', '-', '--force', '--entitlements', entitlements, fixtureBinary])
-  if (process.platform !== 'win32')
-    await chmod(fixtureBinary, 0o755)
+  await execFile(process.execPath, ['build', '--compile', fixtureSource, '--outfile', fixtureBinary])
   const env = Object.fromEntries(Object.entries({
     PATH: fixtures,
     HOME: temporary,
@@ -105,27 +80,49 @@ else console.log('{}');
   assert.match(forwarded.stdout, /fixture stdin/, diagnostics('Forwarded command', forwarded))
   assert.match(forwarded.stderr, /fixture stderr/, diagnostics('Forwarded command', forwarded))
 
-  let output = ''
-  let closing = false
-  const terminal = pty.spawn(binary, [], { cols: 120, rows: 40, cwd: temporary, env, name: 'xterm-256color' })
-  const result = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { terminal.kill(); reject(new Error(`Native TUI timed out: ${output}`)) }, 20000)
-    terminal.onData((data) => {
-      output += data
-      if (!closing && /LAZYMISE|Tools/.test(output)) {
-        closing = true
-        setTimeout(() => terminal.write('q'), 150)
-      }
+  for (const [name, executable, args] of [
+    ['Source', process.execPath, [join(root, 'src/main.js')]],
+    ['Release', command[0], command.slice(1)],
+  ]) {
+    let output = ''
+    let closing = false
+    let terminalClosed
+    const drained = new Promise((resolve) => { terminalClosed = resolve })
+    const child = Bun.spawn([executable, ...args], {
+      cwd: temporary,
+      env,
+      terminal: {
+        cols: 120,
+        rows: 40,
+        data(terminal, data) {
+          output += Buffer.from(data).toString()
+          if (!closing && /LAZYMISE|Tools/.test(output)) {
+            closing = true
+            setTimeout(() => terminal.write('q'), 150)
+          }
+        },
+        exit: () => terminalClosed(),
+      },
     })
-    terminal.onExit((event) => { clearTimeout(timer); resolve(event) })
-  })
-  assert.ok(closing, `Native TUI never rendered: ${output}`)
-  assert.equal(result.exitCode, 0, output)
-  assert.match(output, /\x1B\[\?1049h/, `TUI must enter alternate screen:\n${output}`)
-  assert.match(output, /\x1B\[\?1049l/, `TUI must restore normal screen on quit:\n${output}`)
-  if (process.platform !== 'win32')
-    assert.deepEqual(await readdir(assetTemporary), [], 'Packaged processes must clean up native assets')
-  process.stdout.write('Release smoke passed: checksum/archive, isolated help/version, TTY guard, real argv/stdin/output/exit forwarding, native TUI startup/quit, terminal and asset cleanup.\n')
+    let timer
+    try {
+      const exitCode = await Promise.race([
+        child.exited.then(async (code) => { await drained; return code }),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => { child.kill(); reject(new Error(`${name} TUI timed out: ${output}`)) }, 20000)
+        }),
+      ])
+      assert.ok(closing, `${name} TUI never rendered: ${output}`)
+      assert.equal(exitCode, 0, output)
+      assert.match(output, /\x1B\[\?1049h/, `${name} TUI must enter alternate screen:\n${output}`)
+      assert.match(output, /\x1B\[\?1049l/, `${name} TUI must restore normal screen on quit:\n${output}`)
+    }
+    finally {
+      clearTimeout(timer)
+      child.terminal.close()
+    }
+  }
+  process.stdout.write('Local smoke passed: checksum/archive, isolated release help/version, TTY guard, real argv/stdin/output/exit forwarding, source and extracted-release native TUI startup/quit, terminal restoration.\n')
 }
 finally {
   await rm(temporary, { recursive: true, force: true })

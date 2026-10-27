@@ -1,3 +1,4 @@
+import { test } from 'bun:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -6,7 +7,6 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
-import { test } from '../support/node-test.js'
 import { runProcess } from './process.js'
 import { installLatestRelease, releaseTarget, replaceExecutable, updateRelease } from './release.js'
 

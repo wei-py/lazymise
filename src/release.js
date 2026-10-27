@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto'
 import { chmod, copyFile, lstat, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { isSea } from 'node:sea'
 import packageJson from '../package.json' with { type: 'json' }
 import { runProcess } from './process.js'
 
@@ -179,10 +178,10 @@ export async function installLatestRelease({
   return result
 }
 
-/** Only a packaged SEA may replace itself; source never replaces Node. */
+/** Only a compiled release may replace itself; source never replaces Bun. */
 export async function updateRelease({ signal } = {}) {
-  if (!isSea())
-    throw new Error('Source checkout: update with git pull and pnpm install --frozen-lockfile. Self-update is only available in standalone releases.')
+  if (typeof LAZYMISE_STANDALONE === 'undefined' || !LAZYMISE_STANDALONE)
+    throw new Error('Source checkout: update with git pull and bun install --frozen-lockfile. Self-update is only available in standalone releases.')
   return await installLatestRelease({
     executable: process.execPath,
     currentVersion: packageJson.version,
