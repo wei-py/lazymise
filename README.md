@@ -197,6 +197,8 @@ bun run smoke:release
 
 `mise install` can provision the pinned Bun toolchain; `mise run check` runs lint and tests. Tests use Bun's test runner, isolated fixture processes and settings rather than installing real mise tools. The release builder uses `Bun.build({ compile: ... })` to embed the application and OpenTUI native assets directly. Linux builds select glibc explicitly, and x86_64 builds use Bun's baseline CPU target. Archives retain their historical names, directory layout, dependency notices, and SHA-256 checksums. No Web sidecar is shipped.
 
+Runtime tests require a missing job executable to settle as `failed`; the native spawn diagnostic is preserved, but its platform-specific wording is not part of the contract.
+
 CI/CD runs lint, tests, and standalone archive builds, with no smoke commands. Run `bun run smoke:release` manually after a local build: it verifies the extracted archive with repository reads denied on macOS, checks CLI forwarding, and starts/quits both source and extracted-release TUIs in real PTYs. The smoke fixture is itself a Bun-compiled executable, so Windows needs no shell shim.
 
 Release tags must be exactly `v` followed by the `package.json` version: version `1.2.3` requires `v1.2.3`, not `v.1.2.3`. The workflow validates this before starting any platform builds, and `bun run build` enforces the same rule locally. Manual runs require an explicit existing tag; they check out that tag, not the branch selected in the Actions UI. If a tag is mistyped, create and push the correctly named tag on the intended release commit. Re-running the incorrect tag cannot fix the mismatch; do not bypass the check or rename archives, because archive names and the executable's version must agree.
@@ -265,6 +267,8 @@ bun install --frozen-lockfile
 mise run check
 mise run dev
 ```
+
+运行时测试要求可执行文件缺失的后台任务以 `failed` 状态结束；原生进程启动诊断会保留，但其平台相关措辞不属于契约。
 
 发布 tag 必须是 `v` 加上 `package.json` 的版本号：例如版本 `1.2.3` 对应 `v1.2.3`，不是 `v.1.2.3`。工作流会在启动各平台构建前统一检查，本地 `bun run build` 也保留同样的检查。手动运行必须明确填写已有 tag，检出的是该 tag，而不是 Actions 页面选择的分支。tag 拼错时，应在预期的发布提交上创建并推送正确 tag；重跑错误 tag 无法解决。不要跳过检查或仅修改压缩包名称，否则归档名称与程序版本会不一致。
 

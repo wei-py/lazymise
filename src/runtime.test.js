@@ -68,7 +68,6 @@ test('jobs drain output, preserve errors, and serialize after cancellation', asy
   assert.match(failed.output, /failure line/)
   const missing = await runner.submit({ cmd: [join(tmpdir(), 'missing-lazymise-job')] })
   assert.equal(missing.state, 'failed')
-  assert.match(missing.lastLine, /ENOENT/)
   await runner.abortAll()
 })
 
