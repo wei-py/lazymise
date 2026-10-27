@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { resolve } from 'node:path'
 import process from 'node:process'
 import { runCli } from './cli.js'
@@ -53,7 +53,6 @@ export async function main(args = process.argv.slice(2)) {
     )
     return 1
   }
-  await import('./register-ffi.js')
 
   const projectDir = resolve(args[0] || process.cwd())
   process.chdir(projectDir)

@@ -1,49 +1,48 @@
+import { dlopen, JSCallback, ptr, toArrayBuffer } from 'bun:ffi'
+import { test } from 'bun:test'
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
-import { test } from '../support/node-test.js'
-import ffi from './ffi.cjs'
 
 const libc = process.platform === 'win32' ? 'ucrtbase.dll' : process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6'
 
-test('LTS FFI preserves sliced buffer addresses, zero-copy views and 64-bit results', () => {
-  const { lib, functions } = ffi.dlopen(libc, {
-    strlen: { arguments: ['pointer'], return: 'u64' },
-    strtoll: { arguments: ['pointer', 'pointer', 'i32'], return: 'i64' },
+test('Bun FFI preserves sliced buffer addresses, zero-copy views and 64-bit results', () => {
+  const library = dlopen(libc, {
+    strlen: { args: ['ptr'], returns: 'u64' },
+    strtoll: { args: ['ptr', 'ptr', 'i32'], returns: 'i64' },
   })
   try {
     const bytes = Buffer.from('skip9223372036854775807\0')
     const slice = bytes.subarray(4)
-    assert.equal(functions.strlen(slice), 19n)
-    assert.equal(functions.strtoll(slice, 0n, 10), 9223372036854775807n)
-    const address = ffi.getRawPointer(bytes.buffer) + BigInt(bytes.byteOffset + 4)
-    const view = new Uint8Array(ffi.toArrayBuffer(address, slice.length))
+    const address = ptr(slice)
+    assert.equal(address, ptr(bytes) + 4)
+    assert.equal(BigInt(library.symbols.strlen(address)), 19n)
+    assert.equal(library.symbols.strtoll(address, null, 10), 9223372036854775807n)
+    const view = new Uint8Array(toArrayBuffer(address, 0, slice.length))
     view[0] = 0x31
     assert.equal(bytes.toString(), 'skip1223372036854775807\0')
-    assert.equal(functions.strtoll(address, 0n, 10), 1223372036854775807n)
+    assert.equal(BigInt(library.symbols.strtoll(address, null, 10)), 1223372036854775807n)
   }
   finally {
-    lib.close()
+    library.close()
   }
 })
 
-test('LTS FFI callbacks receive live pointers and can be released before library close', () => {
-  const { lib, functions } = ffi.dlopen(libc, {
-    qsort: { arguments: ['pointer', 'u64', 'u64', 'pointer'], return: 'void' },
+test('Bun FFI callbacks receive live pointers and release their native resources', () => {
+  const library = dlopen(libc, {
+    qsort: { args: ['ptr', 'u64', 'u64', 'ptr'], returns: 'void' },
   })
+  const callback = new JSCallback((left, right) => {
+    const a = new Int32Array(toArrayBuffer(left, 0, 4))[0]
+    const b = new Int32Array(toArrayBuffer(right, 0, 4))[0]
+    return a - b
+  }, { args: ['ptr', 'ptr'], returns: 'i32' })
   try {
-    const callback = lib.registerCallback({ arguments: ['pointer', 'pointer'], return: 'i32' }, (left, right) => {
-      const a = new Int32Array(ffi.toArrayBuffer(left, 4))[0]
-      const b = new Int32Array(ffi.toArrayBuffer(right, 4))[0]
-      return a - b
-    })
     const values = new Int32Array([9, -3, 0, 2, -3])
-    functions.qsort(values, 5n, 4n, callback)
+    library.symbols.qsort(ptr(values), 5, 4, callback.ptr)
     assert.deepEqual([...values], [-3, -3, 0, 2, 9])
-    lib.unregisterCallback(callback)
   }
   finally {
-    lib.close()
+    callback.close()
+    library.close()
   }
-  lib.close()
-  assert.throws(() => lib.registerCallback({ arguments: [], return: 'void' }, () => {}), /closed/)
 })
