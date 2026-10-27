@@ -6,13 +6,13 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "types": ["node"],
+    "types": ["bun"],
     "allowJs": true,
     "checkJs": false,
     "noEmit": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.js", "vendor/**/*.js", "support/**/*.js", "scripts/**/*.js", "eslint.config.js"],
+  "include": ["src/**/*.js", "vendor/**/*.js", "scripts/**/*.js", "eslint.config.js"],
   "exclude": ["node_modules", "skills", ".agents", ".claude", "docs"]
 }

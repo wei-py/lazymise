@@ -1,36 +1,32 @@
 {
   "name": "lazymise",
   "type": "module",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "private": true,
-  "packageManager": "pnpm@12.5.1",
+  "packageManager": "bun@1.4.2",
   "bin": {
     "lazymise": "./src/main.js"
   },
   "engines": {
-    "node": ">=24.22.1"
+    "bun": ">=1.4.2"
   },
   "scripts": {
-    "build": "node scripts/build.js",
-    "smoke:release": "node scripts/smoke-release.js",
-    "dev": "node src/main.js",
-    "test": "node --import ./src/register-ffi.js --no-warnings --test",
-    "lint": "eslint .",
-    "format": "pnpm dlx oxfmt@latest . && eslint . --fix",
-    "lint:fix": "eslint . --fix"
+    "build": "bun scripts/build.js",
+    "smoke:release": "bun scripts/smoke-release.js",
+    "dev": "bun src/main.js",
+    "test": "bun test --timeout 30000",
+    "lint": "bun --bun eslint .",
+    "format": "bun --bun oxfmt . && bun --bun eslint . --fix",
+    "lint:fix": "bun --bun eslint . --fix"
   },
   "dependencies": {
     "@opentui/core": "0.5.11",
-    "koffi": "3.3.4",
     "string-width": "7.2.0"
   },
   "devDependencies": {
     "@antfu/eslint-config": "9.5.1",
-    "@lydell/node-pty": "1.2.0-beta.15",
-    "@types/node": "24.19.2",
-    "esbuild": "0.28.2",
+    "@types/bun": "1.4.4",
     "eslint": "10.10.0",
-    "expect": "30.5.2",
-    "postject": "1.0.0-alpha.6"
+    "oxfmt": "0.75.0"
   }
 }

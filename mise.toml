@@ -1,14 +1,13 @@
 [tools]
-node = "24.22.1"
-pnpm = "12.5.1"
+bun = "1.4.2"
 
 [tasks.lint]
 description = "Lint all JS sources"
-run = "pnpm lint"
+run = "bun run lint"
 
 [tasks.dev]
 description = "Run lazymise from source"
-run = "pnpm dev"
+run = "bun run dev"
 
 [tasks.check]
 description = "Run all checks"
@@ -18,13 +17,13 @@ depends = [
 ]
 
 [tasks.test]
-description = "Run the Node test suite"
-run = "pnpm test"
+description = "Run the Bun test suite"
+run = "bun test --timeout 30000"
 
 [tasks.build]
 description = "Build the host-native standalone release"
-run = "pnpm build"
+run = "bun run build"
 
 [tasks."smoke:release"]
 description = "Exercise the standalone archive in an isolated fixture"
-run = "pnpm smoke:release"
+run = "bun run smoke:release"

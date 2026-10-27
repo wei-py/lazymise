@@ -10,7 +10,7 @@ export default antfu(
     ignores: ['skills/**', '.agents/**', '.claude/**', 'dist/**'],
   },
   {
-    files: ['src/**/*.js', 'vendor/**/*.js', 'support/**/*.js', 'scripts/**/*.js'],
+    files: ['src/**/*.js', 'vendor/**/*.js', 'scripts/**/*.js'],
     rules: {
       'no-control-regex': 'off',
       'node/prefer-global/process': 'off',
@@ -20,6 +20,8 @@ export default antfu(
     languageOptions: {
       globals: {
         process: 'readonly',
+        Bun: 'readonly',
+        LAZYMISE_STANDALONE: 'readonly',
       },
     },
   },
