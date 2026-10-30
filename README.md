@@ -85,11 +85,11 @@ Options:
   -v, --version    Print version
 ```
 
-## Grouped terminal workspace
+## Terminal workspace
 
-Four compact left-hand groups share one detail area:
+Four modules live in the top navigation. Only the active module's selected page list is shown, with a shared detail area:
 
-| Focus key | Page tabs |
+| Module key | Page tabs |
 | --------- | --------- |
 | `1` | Tools / Updates |
 | `2` | Tasks / Console |
@@ -97,28 +97,30 @@ Four compact left-hand groups share one detail area:
 | `4` | Dashboard / System / Logs |
 | `0` | Shared detail |
 
-Focus is separate from the active detail target. Moving focus alone keeps the right-hand content unchanged; selecting a row, changing a page tab, or invoking an action activates the focused group's actual page. Each page remembers its selection, filter, list position, and detail scroll when you return. Tools also remembers Project and Global scope positions separately. Actions never use a different group's row just because its detail is still visible.
+Switching modules activates that module's saved page and list immediately. Each page remembers its selection, filter, list position, and detail scroll when you return. Tools also remembers Project and Global scope positions separately. The list and details always belong to the same active page.
 
-At **100 columns × 30 rows or larger**, all four groups are stacked beside the detail area. Otherwise, at **80 columns or more and at least 10 rows**, only the remembered group and detail are side by side. At **40–79 columns and at least 10 rows**, that group is stacked above the detail. Smaller terminals show a resize hint but still allow quitting and opening help/settings; existing overlays remain operable. Resizing does not reset page context. This is a terminal interface, with no Web sidecar.
+Startup and refresh load local tools, tasks, and configuration without waiting for the background update check. These lists remain usable while Updates and Dashboard show “Checking for updates…”. A failed check shows its original error rather than “0 updates” or “All tools up to date”; press `r` to retry. During a new check or after a failure, previously loaded update rows remain visible, with the pending/error status.
 
-In the four-group layout, the remembered navigation group expands to use the remaining height; the other three groups retain a three-line preview. Focusing detail keeps that group expanded, and resizing preserves the remembered group.
+At **80 columns or more and at least 10 rows**, the active list uses roughly 70% of the width and details use roughly 30%. At **40–79 columns and at least 10 rows**, the list fills the workspace; focusing details replaces the list until you return. Smaller terminals show a resize hint but still allow quitting and opening help/settings; existing overlays remain operable. The module bar stays above the workspace and the compact footer below it. Resizing does not reset page context. This is a terminal interface, with no Web sidecar.
+
+The top module navigation and bottom shortcut bar have complete borders. Module labels retain the `[1]`–`[4]` badges and `▸` active marker. At 10–11 rows, the header and status line are hidden to preserve workspace rows.
 
 Selected rows and confirmation choices use the slim `›` marker while retaining the theme's selection background. The `▶` shown for a running job is a status symbol, not a navigation marker.
 
 ## Essential keys
 
-These are main-workspace keys; overlays and text inputs take precedence. Item actions require a left-hand group to be focused.
+These are main-workspace keys; overlays and text inputs take precedence. Item actions require the active list to be focused, not navigation or details.
 
 | Key | Action |
 | --- | ------ |
-| `1`–`4` / `0` | Focus a group / the shared detail without changing the active target |
-| `Tab` / `Shift-Tab` | Cycle the four groups and detail; overlays follow their local hints |
-| `h/←` / `l/→` | Return from detail to the remembered group / open the focused selection in detail; never cycle groups |
-| `[` / `]` | Previous / next page tab in the remembered group, including from detail focus |
-| `j/k` or up/down | Select a row in the focused group, or scroll detail; stop at the first and last row |
+| `1`–`4` / `0` | Switch module, activate its saved page and focus its list / focus details |
+| `Tab` / `Shift-Tab` | Cycle top navigation, the current list and details; overlays follow their local hints |
+| `h/←` / `l/→` | In navigation: previous / next module; in the list: `l` opens details; in details: `h` returns to the list |
+| `[` / `]` | Previous / next page tab in the active module, including from navigation or details |
+| `j/k` or up/down | Select a list row or scroll details; `k` at the first row enters navigation, where `j` returns to the saved list row |
 | `Home/End`, `g/G` | First / last row or detail line |
 | `PgUp/PgDn`, `Ctrl+d/u` | Move or scroll by half a page |
-| `Enter` / `Esc` | Open the focused selection in detail / return to the remembered group; Enter in detail does not leave it |
+| `Enter` / `Esc` | Navigation: return to the saved list row; list: open details; Esc returns to the list; Enter in details stays there |
 | `s` in Tools | Switch Project / Global tool scope and its default write target |
 | `v` in Tools | Toggle all installed versions, including inactive versions; keep scope and write target |
 | `L` | Switch 中文 / English |
@@ -166,11 +168,11 @@ Nested dialogs retain parent input and selection. While editing, letters, `?`, d
 
 ## Configuration target
 
-With the Config group focused, press `n` to create `mise.toml` in the current working directory. Confirmations start on **Cancel**: press `y` explicitly, or choose Confirm with right/`l` (or Tab) and then Enter; Enter on Cancel, `Esc`, `n`, or `q` cancels. Confirmation immediately creates an empty `[tools]` table, selects the file in the list, and makes it the write target. Existing files, directories, and symlinks are never overwritten. Global configuration is unchanged; subsequent guided Use operations write to this local file.
+With the Config list focused, press `n` to create `mise.toml` in the current working directory. Confirmations start on **Cancel**: press `y` explicitly, or choose Confirm with right/`l` (or Tab) and then Enter; Enter on Cancel, `Esc`, `n`, or `q` cancels. Confirmation immediately creates an empty `[tools]` table, selects the file in the list, and makes it the write target. Existing files, directories, and symlinks are never overwritten. Global configuration is unchanged; subsequent guided Use operations write to this local file.
 
 Tools defaults to the **Project** scope: effective configured project tools, including inherited global declarations (marked `↑`; legend: `↑ global`). **Global** shows actual global configuration declarations, even when a project overrides them. Neither configured scope includes installed tools that no configuration references. Press `v` in Tools to see **all installed versions**, including inactive/source-less versions, but not uninstalled declarations. Press `v` again to restore the configured scope's selection and search; installed-view selection and search are also remembered separately. `v` never changes the write target. `s` switches Project / Global scope and exits installed view; selecting a configuration write target also exits installed view. `[`/`]` switches Tools / Updates page tabs. Switching scope does not activate or change the terminal environment.
 
-The default write target follows the tool scope: Project uses the project configuration, Global uses the global configuration. Global paths follow `MISE_GLOBAL_CONFIG_FILE`, then `MISE_CONFIG_DIR`, then `XDG_CONFIG_HOME/mise`, otherwise `~/.config/mise/config.toml`. Startup never creates a file. Press `F2` with a group focused, or `s` on a file in Config, to select an exact target; a manual selection also synchronizes Tools to its scope. Refresh preserves a manual choice. Selecting or cancelling never writes a file, and the target is not persisted.
+The default write target follows the tool scope: Project uses the project configuration, Global uses the global configuration. Global paths follow `MISE_GLOBAL_CONFIG_FILE`, then `MISE_CONFIG_DIR`, then `XDG_CONFIG_HOME/mise`, otherwise `~/.config/mise/config.toml`. Startup never creates a file. Press `F2` with the active list focused, or `s` on a file in Config, to select an exact target; a manual selection also synchronizes Tools to its scope. Refresh preserves a manual choice. Selecting or cancelling never writes a file, and the target is not persisted.
 
 - Discovered project and global files are listed together; the first file is never implicitly selected.
 - Enter an absolute or project-relative `.toml` path, or choose the new project `mise.toml` action. Explicit `~/` expands to your home; `$VAR` is literal.
@@ -183,9 +185,11 @@ Tool scope controls which configured declarations are shown and the default guid
 
 Truncated text in the focused selected list row scrolls automatically after a short dwell, exposing long names and versions without widening the terminal. It pauses while an overlay or Details has focus and resets when selection, search, page, or terminal size changes. The compact `↑` marker means the project row inherits global configuration; full origin remains in Details. In installed view, select an inactive version and press `D` to confirm uninstalling that exact `tool@version` in the background. Direct Enter on the default Cancel button, or `Esc/n/q`, does not start an uninstall.
 
+Long configuration paths initially retain the filename at the right end; automatic scrolling then reveals the rest of the path.
+
 Search starts explicitly with `/`. While editing, letters including `p/G/j/k/q`, `?`, and digits are text. In local page search, Enter accepts the query without selecting a result; Tab switches between local filtering and registry-add search, where Enter selects a tool. Registry pickers have their own Tab/Shift-Tab backend filters and explicit `/` editing. Esc restores the previous query and cursor, and Ctrl+u clears input. In overlays, Esc/q returns one level outside text input, and Ctrl+c cancels the flow. Long modal paths/errors show a `PgUp/PgDn` position hint.
 
-Item actions operate on the focused group's actual list, not the page still shown in shared detail. Tools `I` uses a version, `i` installs only, and `D` confirms the exact `tool@version`. Config `s` chooses the target, `e` edits, and `y` copies the complete file. Enter focuses shared detail, including Console/Logs output; detail supports Home/End and Ctrl+d/u scrolling. Detail focus does not dispatch list actions.
+Item actions operate on the active page's list only while that list is focused. Tools `I` uses a version, `i` installs only, and `D` confirms the exact `tool@version`. Config `s` chooses the target, `e` edits, and `y` copies the complete file. Enter focuses shared detail, including Console/Logs output; detail supports Home/End and Ctrl+d/u scrolling. Navigation and detail focus do not dispatch list actions.
 
 Updates `u` confirms marked tools, or only the current row when nothing is marked. `U` confirms all **currently filtered** tools. Confirmation captures and lists the exact names; cancellation runs nothing. Expert `upgrade` also requires confirmation and never gains an implicit `--path`.
 
@@ -237,20 +241,24 @@ lazymise
 - 多选并升级过期工具。
 - 运行 `mise.toml` 中定义的项目任务。
 - 使用 Environment 页面执行 `env`、`exec`、`which` 等命令。
-- 按 `m` 打开当前聚焦组页面的相关操作，按 `M` 打开全部 mise 命令；`:` 是设置，不是命令目录。
+- 当前列表聚焦时，按 `m` 打开本页相关操作，按 `M` 打开全部 mise 命令；`:` 是设置，不是命令目录。
 - 按 `A` 输入 `github:owner/repository`、`npm:package` 等完整自定义后端标识；此类标识已明确来源，不会再次要求选择来源。
 - 按 `F2` 选择具体配置文件；Tools 的 `I` 与 `A` 通过 `--path` 写入该文件，`Enter` 只聚焦共享详情。工具列表由项目／全局范围决定，不随手动目标过滤。
 - 按 `:` 打开设置弹层（语言 / 主题两行），`j/k` 选行、`Enter`/`l` 下一值、`h` 上一值，即时生效并保存；`L` 直接切换语言。
 
-### 分组、焦点与帮助
+### 模块、焦点与帮助
 
-左侧四组与右侧共享详情配合：`1` 聚焦 Tools / Updates，`2` 聚焦 Tasks / Console，`3` 聚焦 Environment / Config，`4` 聚焦 Dashboard / System / Logs；`0` 聚焦详情。`Tab/Shift-Tab` 循环焦点，`l/→` 进入所选详情，`h/←` 从详情返回上次导航组，不用于循环分组。`[`/`]` 切换记忆组的页面标签；Tools 中 `s` 单独切换项目／全局范围。
+顶部导航包含四个模块：`1` Tools / Updates，`2` Tasks / Console，`3` Environment / Config，`4` Dashboard / System / Logs。数字键立即激活该模块记忆的页面并聚焦列表；`0` 聚焦详情。`[`/`]` 切换当前模块的页面标签；Tools 中 `s` 单独切换项目／全局范围。
 
-数字与 Tab 仅切换焦点，不会替换右侧当前目标。移动选中行、切换页面标签或进入详情／执行动作时，才激活聚焦组的真实页面；动作不会误用右侧旧页面的选中项。每页保留选中行、过滤、列表位置和详情滚动；Tools 的项目／全局范围分别保留位置。`Enter` 打开共享详情；详情中再次 Enter 不返回，使用 `h/←` 或 `Esc` 返回记忆组。列表上下移动及翻页到首尾时停止，不循环。
+只显示当前页面的一个列表。`Tab/Shift-Tab` 在顶部导航、当前列表、详情之间循环。列表首项按 `k/↑` 进入导航；导航中 `h/l` 或左右键切换模块并恢复其记忆页面，`j/↓` 或 Enter 返回记忆列表行。列表中 `l/→` 或 Enter 进入详情，详情中 `h/←` 或 Esc 返回列表，详情中 Enter 保持焦点。列表与详情始终属于同一页面；导航和详情不响应列表动作键。
 
-宽高至少 **100×30** 时显示四组与右侧详情；否则宽至少 **80** 且高至少 **10** 时显示当前组与详情左右布局；**40–79** 列且高至少 **10** 时上下布局。更小时显示尺寸提示，仍可退出、打开帮助和设置，并操作已打开的弹层；缩放不重置页面上下文。
+每页保留选中行、过滤、列表位置和详情滚动；Tools 的项目／全局范围分别保留位置。列表向下移动到末尾时停止，不循环；详情上下滚动。输入与弹层优先处理按键。
 
-四组同时显示时，当前记忆的导航组自动占用主要高度，其余各保留三行预览；切到详情仍保留该组展开，缩放后继续保留原组。
+启动与刷新先加载本地工具、任务和配置，不等待后台更新检查。这些列表始终可用；Updates 和 Dashboard 明确显示“正在检查更新…”。检查失败显示原始原因，不会误报“0 个更新”或“所有工具已是最新”；按 `r` 重试。再次检查或失败时保留上次成功取得的更新行，并显示加载／错误状态。
+
+宽至少 **80** 且高至少 **10** 时，列表／详情约按 **70%／30%** 左右布局；**40–79** 列且高至少 **10** 时仅显示列表，聚焦详情后替换为详情，返回后恢复列表。更小时显示尺寸提示，仍可退出、打开帮助和设置，并操作已打开的弹层。顶部模块栏与底部紧凑提示栏始终独立，缩放不重置页面上下文。
+
+顶部模块导航与底部快捷键栏均有完整边框；模块保留 `[1]`–`[4]` 编号及 `▸` 当前项标记。终端仅有 10–11 行时隐藏页头和状态行，优先保留主区内容。
 
 默认主题固定为 **Gruvbox Light**（`gruvbox-light`），不随终端深浅色变化。缺少主题或旧通用值 `default` 会回退到该主题，加载时不改写设置；已有明确命名的主题继续保留。语言与主题均可在设置中选择并持久化。
 

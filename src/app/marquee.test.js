@@ -55,3 +55,32 @@ test('selected tool fields reveal their tails while other rows and status column
   expect(paused.scrolling).toBe(false)
   expect(paused.lines).toEqual(start.lines)
 })
+
+test('selected config paths show filenames immediately before scrolling their full location', () => {
+  const items = [
+    { path: `/${'external-configuration/'.repeat(8)}target.toml`, tools: [] },
+    { path: `/${'other-configuration/'.repeat(8)}other.toml`, tools: [] },
+  ]
+  const width = 38
+  for (const language of ['en', 'zh']) {
+    const state = { page: 'Config', language, selected: 0 }
+    const paused = listContent(state, items, 2, width)
+    for (let step = 0; step < 5; step++) {
+      const frame = listContent(state, items, 2, width, { enabled: true, step })
+      expect(frame.scrolling).toBe(true)
+      expect(frame.lines).toEqual(paused.lines)
+      expect(frame.lines[0]).toContain('target.toml')
+    }
+    let locationVisible = false
+    let filenameVisible = false
+    for (let step = 5; step < stringWidth(items[0].path) + 15; step++) {
+      const frame = listContent(state, items, 2, width, { enabled: true, step })
+      expect(frame.lines[1]).toBe(paused.lines[1])
+      expect(stringWidth(frame.lines[0])).toBeLessThanOrEqual(width)
+      locationVisible ||= frame.lines[0].includes('/external-configuration/')
+      filenameVisible ||= frame.lines[0].includes('target.toml')
+    }
+    expect(locationVisible).toBe(true)
+    expect(filenameVisible).toBe(true)
+  }
+})

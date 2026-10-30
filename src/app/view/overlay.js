@@ -10,10 +10,10 @@ import {
   box,
   clipPath,
   displayPath,
-  inputLine,
   itemLine,
   padColumns,
   renderBox,
+  inputLine as renderInputLine,
   scrollContent,
   showNode,
   windowContent,
@@ -39,8 +39,10 @@ function wrapDescription(value, width) {
   return lines
 }
 
-export function renderOverlay(nodes, s, app, width, height) {
+export function renderOverlay(nodes, s, app, width, height, widthMethod) {
   const { overlay, language } = s
+  for (const node of Object.values(nodes)) node.visible = false
+  const inputLine = (label, value, columns) => renderInputLine(label, value, columns, widthMethod)
   if (width < 6 || height < 4) {
     showNode(nodes, 'modalInner', 0, 0, width, height, [t(language, overlay.type === 'Help' ? 'help_title_full' : 'confirm_command_title'), 'Esc/Enter'], COLORS.focus, COLORS.surface)
     return null

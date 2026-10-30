@@ -7,30 +7,46 @@ export function pageActionsHint(s) {
     return []
   if (s.overlay)
     return overlayHint(s.overlay, lang)
+  if (s.focus === FOCUS.Navigation)
+    return hintSegments(lang, 'navigation_hint')
   if (s.focus === FOCUS.Details)
     return hintSegments(lang, 'details_hint')
+  let key
   switch (s.page) {
     case 'Dashboard':
-      return hintSegments(lang, 'dashboard_hint')
+      key = 'dashboard_hint'
+      break
     case 'Tools':
-      return hintSegments(lang, 'tools_hint')
+      key = 'tools_hint'
+      break
     case 'Updates':
-      return hintSegments(lang, 'updates_hint')
+      key = 'updates_hint'
+      break
     case 'Tasks':
-      return hintSegments(lang, 'tasks_hint')
+      key = 'tasks_hint'
+      break
     case 'Environment':
-      return hintSegments(lang, 'environment_hint')
+      key = 'environment_hint'
+      break
     case 'Config':
-      return hintSegments(lang, 'config_hint')
+      key = 'config_hint'
+      break
     case 'Console':
-      return hintSegments(lang, 'console_hint')
+      key = 'console_hint'
+      break
     case 'System':
-      return hintSegments(lang, 'system_hint')
+      key = 'system_hint'
+      break
     case 'Logs':
-      return hintSegments(lang, 'logs_hint')
+      key = 'logs_hint'
+      break
     default:
       return []
   }
+  return [
+    ...hintSegments(lang, s.selected === 0 ? 'list_navigation_hint' : 'list_detail_hint'),
+    ...hintSegments(lang, key),
+  ]
 }
 
 export function overlayHint(overlay, language) {

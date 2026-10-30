@@ -1,7 +1,7 @@
 import { relative } from 'node:path'
-import { fg, StyledText } from '@opentui/core'
+import { BoxRenderable, fg, StyledText } from '@opentui/core'
 import stringWidth from 'string-width'
-import { clipColumns, FOCUS, GROUPS } from '../state.js'
+import { clipColumns, FOCUS } from '../state.js'
 import { COLORS } from './colors.js'
 
 const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
@@ -66,8 +66,6 @@ export function windowContent(lines, index, size, position) {
     start = Math.max(0, index)
   else if (count > 0 && index >= start + count)
     start = Math.min(Math.max(0, lines.length - count), index - count + 1)
-  if (position && count > 0)
-    position.listStart = start
   return {
     lines: lines.slice(start, start + count),
     start,
@@ -92,7 +90,7 @@ export function box(
   const innerWidth = width - 2
   const innerHeight = height - 2
   const titleColor = content.titleColor || frameColor
-  const label = clipColumns(` ${content.title || ''} `, innerWidth)
+  const label = content.title ? clipColumns(` ${content.title} `, innerWidth) : ''
   const counter = content.counter ? clipColumns(` ${content.counter} `, innerWidth) : ''
 
   const border = {
@@ -129,7 +127,7 @@ export function box(
   ]
 
   return {
-    frame: { left, top, width, height, lines: frame, color: frameColor, background },
+    frame: { left, top, width, height, lines: frame, title: label, counter, color: frameColor, background },
     inner: {
       left: left + 1,
       top: top + 1,
@@ -145,27 +143,25 @@ export function box(
   }
 }
 
-/** Render a bordered panel titled `[n] Title (count)` with focus-aware colors. */
+/** Render the active list or detail panel with focus-aware colors. */
 export function panel(id, left, top, width, height, content, s) {
-  const groupIndex = GROUPS.findIndex(group => group.id === id)
   const focused = (id === 'detail' ? FOCUS.Details : id) === s.focus
-  const prefix = `[${id === 'detail' ? 0 : groupIndex + 1}] `
   const suffix = ` (${content.count ?? 0})`
-  // Clip the label so `[n]` and `(count)` survive narrow panels.
-  const room = Math.max(1, width - 4 - stringWidth(prefix) - stringWidth(suffix))
-  const title = `${prefix}${clipColumns(content.title || '', room)}${suffix}`
+  // Preserve the count when the panel title is clipped.
+  const room = Math.max(1, width - 4 - stringWidth(suffix))
+  const title = `${clipColumns(content.title || '', room)}${suffix}`
   let titleParts
   if (content.titleTabs) {
     const tabs = content.titleTabs
     const fullWidth = tabs.reduce((size, tab) => size + stringWidth(tab.text), 0) + 3 * (tabs.length - 1)
     const visibleTabs = fullWidth <= room ? tabs : tabs.filter(tab => tab.active)
-    titleParts = [{ text: prefix }]
+    titleParts = []
     for (const [index, tab] of visibleTabs.entries()) {
       if (index)
         titleParts.push({ text: ' | ', color: COLORS.border })
       titleParts.push({
         text: clipColumns(tab.text, room),
-        color: tab.active ? COLORS.focus : COLORS.muted,
+        color: tab.active ? focused ? COLORS.focus : COLORS.text : COLORS.muted,
       })
     }
     titleParts.push({ text: suffix })
@@ -180,8 +176,9 @@ export function panel(id, left, top, width, height, content, s) {
     {
       ...content,
       title: titleParts ? titleParts.map(part => part.text).join('') : title,
-      titleParts: width >= 4 + stringWidth(prefix) + stringWidth(suffix) + 1 ? titleParts : undefined,
+      titleParts: width >= 5 + stringWidth(suffix) ? titleParts : undefined,
       titleColor: focused ? COLORS.focus : COLORS.muted,
+      selected: focused ? content.selected : -1,
     },
     focused ? COLORS.focus : COLORS.border,
   )
@@ -227,17 +224,35 @@ export function showNode(
 export function renderBox(nodes, id, boxResult) {
   if (!boxResult)
     return
-  showNode(
-    nodes,
-    `${id}Frame`,
-    boxResult.frame.left,
-    boxResult.frame.top,
-    boxResult.frame.width,
-    boxResult.frame.height,
-    boxResult.frame.lines,
-    boxResult.frame.color,
-    boxResult.frame.background,
-  )
+  const frameNode = nodes[`${id}Frame`]
+  if (frameNode instanceof BoxRenderable) {
+    const frame = boxResult.frame
+    frameNode.visible = true
+    Object.assign(frameNode, {
+      left: frame.left,
+      top: frame.top,
+      width: frame.width,
+      height: frame.height,
+      bottomTitle: frame.counter,
+      bottomTitleAlignment: 'right',
+      borderColor: frame.color,
+      backgroundColor: frame.background,
+    })
+    showNode(nodes, `${id}Title`, frame.left + 1, frame.top, frame.width - 2, 1, [frame.title], frame.color, frame.background)
+  }
+  else {
+    showNode(
+      nodes,
+      `${id}Frame`,
+      boxResult.frame.left,
+      boxResult.frame.top,
+      boxResult.frame.width,
+      boxResult.frame.height,
+      boxResult.frame.lines,
+      boxResult.frame.color,
+      boxResult.frame.background,
+    )
+  }
   showNode(
     nodes,
     `${id}Inner`,
@@ -265,7 +280,7 @@ export function renderBox(nodes, id, boxResult) {
   }
 }
 
-export function inputLine(label, value, width) {
+export function inputLine(label, value, width, widthMethod = 'unicode') {
   const prefix = clipColumns(label, Math.floor(width / 2))
   const budget = Math.max(0, width - stringWidth(prefix) - 1)
   const graphemes = [...segmenter.segment(value)]
@@ -273,7 +288,10 @@ export function inputLine(label, value, width) {
   let columns = 0
   for (let index = graphemes.length - 1; index >= 0; index--) {
     const segment = graphemes[index].segment
-    const size = stringWidth(segment)
+    // Legacy terminals measure ZWJ emoji as their constituent code points.
+    const size = widthMethod === 'wcwidth'
+      ? [...segment].reduce((columns, point) => columns + stringWidth(point), 0)
+      : stringWidth(segment, { ambiguousIsNarrow: widthMethod !== 'unicode-wide' })
     if (columns + size > budget)
       break
     tail = segment + tail

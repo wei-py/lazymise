@@ -39,6 +39,7 @@ async function fixture(run, width = 100, height = 24) {
     throw new Error('Unexpected exit')
   })
   app.state.loading = false
+  app.state.updatesLoading = false
   ui.renderer.keyInput.on('keypress', (key) => {
     if (key.eventType === 'release')
       return
@@ -164,7 +165,7 @@ test('automatic terminal theme persists, redraws live, and leaves named palettes
   })
 })
 
-test('focused navigation reveals more rows and remains expanded when detail gains focus', async () => {
+test('only the active module list is shown and remains visible when wide details gain focus', async () => {
   await fixture(async ({ app, ui, frame }) => {
     const tools = Array.from({ length: 30 }, (_, index) => ({
       name: `fixture-tool-${String(index).padStart(2, '0')}`,
@@ -177,24 +178,57 @@ test('focused navigation reveals more rows and remains expanded when detail gain
       tasks: Array.from({ length: 30 }, (_, index) => ({ name: `fixture-task-${String(index).padStart(2, '0')}` })),
     })
     const visibleRows = (screen, prefix) => screen.split('\n').filter(line => line.includes(prefix)).length
-    const collapsedTools = visibleRows(await frame(), 'fixture-tool-')
+    expect(visibleRows(await frame(), 'fixture-tool-')).toBe(0)
     ui.mockInput.pressKey('1')
-    const expanded = await frame()
-    expect(visibleRows(expanded, 'fixture-tool-')).toBeGreaterThan(collapsedTools)
-    expect(visibleRows(expanded, 'fixture-tool-')).toBeGreaterThanOrEqual(12)
+    const toolsFrame = await frame()
+    expect(visibleRows(toolsFrame, 'fixture-tool-')).toBeGreaterThanOrEqual(12)
+    expect(visibleRows(toolsFrame, 'fixture-task-')).toBe(0)
     ui.mockInput.pressKey('2')
     const tasks = await frame()
-    expect(visibleRows(tasks, 'fixture-tool-')).toBe(collapsedTools)
+    expect(visibleRows(tasks, 'fixture-tool-')).toBe(0)
     expect(visibleRows(tasks, 'fixture-task-')).toBeGreaterThanOrEqual(12)
     ui.mockInput.pressKey('0')
     expect(visibleRows(await frame(), 'fixture-task-')).toBe(visibleRows(tasks, 'fixture-task-'))
-    expect(app.state.page).toBe('Dashboard')
+    expect(app.state.page).toBe('Tasks')
     ui.resize(100, 30)
     expect(visibleRows(await frame(), 'fixture-task-')).toBeGreaterThanOrEqual(8)
     ui.resize(120, 40)
     expect(visibleRows(await frame(), 'fixture-task-')).toBe(visibleRows(tasks, 'fixture-task-'))
     expect(app.state.focusedGroup).toBe(1)
   }, 120, 40)
+})
+
+test('narrow terminals show the active list or focused details without losing selection', async () => {
+  await fixture(async ({ app, ui, frame }) => {
+    app.state.snapshot.tasks = [
+      { name: 'narrow-first' },
+      { name: 'narrow-selected', description: 'Selected task details' },
+      { name: 'narrow-last' },
+    ]
+    app.jumpToPage('Tasks')
+    ui.mockInput.pressKey('j')
+    expect(await frame()).toContain('narrow-last')
+    ui.mockInput.pressKey('l')
+    expect(app.state.focus).toBe('Details')
+    const details = await frame()
+    expect(details).toContain('narrow-selected')
+    expect(details).not.toContain('narrow-last')
+    ui.mockInput.pressKey('h')
+    expect(app.state.focus).toBe('Group2')
+    expect(app.state.selected).toBe(1)
+    expect(await frame()).toContain('narrow-last')
+    ui.mockInput.pressKey('k')
+    ui.mockInput.pressKey('k')
+    expect(app.state.focus).toBe('Navigation')
+    ui.mockInput.pressKey('l')
+    expect(app.state.page).toBe('Environment')
+    ui.mockInput.pressKey('h')
+    expect(app.state.page).toBe('Tasks')
+    ui.mockInput.pressEnter()
+    expect(app.state.focus).toBe('Group2')
+    expect(app.state.selected).toBe(0)
+    expect(await frame()).toContain('narrow-last')
+  }, 60, 18)
 })
 
 test('navigation selection uses a slim marker without changing row backgrounds', async () => {
@@ -279,33 +313,27 @@ test('column clipping preserves complete graphemes within every budget', () => {
   }
 })
 
-function cells(row) {
-  const result = []
-  for (const { segment } of new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(row)) {
-    result.push(segment)
-    for (let column = 1; column < stringWidth(segment); column++) result.push('')
-  }
-  return result
-}
-
 function modalRect(ui, title) {
   const rows = ui.captureCharFrame().split('\n')
   const top = rows.findIndex(row => row.includes(`┌ ${title}`))
   expect(top).toBeGreaterThanOrEqual(0)
-  const left = stringWidth(
-    rows[top].slice(0, rows[top].indexOf('┌', rows[top].indexOf(title) - 2)),
-  )
-  const bottom = rows.findIndex((row, index) => index > top && cells(row)[left] === '└')
+  // Native cells retain the renderer's width policy and wide-glyph continuations.
+  // Re-segmenting captured text with string-width shifts borders after ZWJ emoji.
+  const buffer = ui.renderer.currentRenderBuffer
+  const nativeRows = Array.from({ length: buffer.height }, (_, y) =>
+    buffer.buffers.char.subarray(y * buffer.width, (y + 1) * buffer.width))
+  const code = value => value.codePointAt(0)
+  const left = nativeRows[top].indexOf(code('┌'))
+  const bottom = nativeRows.findIndex((row, index) => index > top && row[left] === code('└'))
   expect(bottom).toBeGreaterThan(top)
-  // The ASCII bottom edge avoids continuation padding in captured CJK titles.
-  const right = cells(rows[bottom]).indexOf('┘', left + 1)
+  const right = nativeRows[bottom].indexOf(code('┘'), left + 1)
   expect(left).toBeGreaterThanOrEqual(0)
   expect(right).toBeGreaterThan(left)
   expect(right).toBeLessThan(ui.renderer.width)
   expect(bottom).toBeLessThan(ui.renderer.height)
   for (let y = top + 1; y < bottom; y++) {
-    expect(cells(rows[y])[left]).toBe('│')
-    expect(cells(rows[y])[right]).toBe('│')
+    expect(nativeRows[y][left]).toBe(code('│'))
+    expect(nativeRows[y][right]).toBe(code('│'))
     let x = 0
     for (const span of ui.captureSpans().lines[y].spans) {
       const end = x + span.width
@@ -585,7 +613,7 @@ test('Help categories remember scrolling without leaking keys or changing the ac
     showHelp(app)
     await frame()
     ui.mockInput.pressKey('o')
-    expect(app.state.page).toBe('Tools')
+    expect(app.state.page).toBe('Tasks')
     ui.mockInput.pressKey('j')
     expect(app.state.overlay.scroll).toBe(1)
     ui.mockInput.pressArrow('right')
@@ -605,7 +633,7 @@ test('Help categories remember scrolling without leaking keys or changing the ac
     ui.mockInput.pressEnter()
     expect(app.state.overlay).toBeNull()
     expect(app.state.focus).toBe('Group2')
-    expect(app.state.page).toBe('Tools')
+    expect(app.state.page).toBe('Tasks')
     showHelp(app)
     ui.mockInput.pressKey('q')
     expect(app.state.overlay).toBeNull()
@@ -667,6 +695,14 @@ test('detail focus rejects list actions and explicit search owns text', async ()
     ui.mockInput.pressKey('y')
     expect(app.state.overlay).toBeNull()
     app.jumpToPage('Config')
+    ui.mockInput.pressKey('k')
+    expect(app.state.focus).toBe('Navigation')
+    for (const key of ['y', 'n', 's', 'e', '/', 'a', 'A', 'm', 'M']) {
+      ui.mockInput.pressKey(key)
+      expect(app.state.overlay).toBeNull()
+      expect(app.state.status).toBe('')
+    }
+    ui.mockInput.pressEnter()
     expect(app.state.focus).toBe('Group3')
     ui.mockInput.pressKey('y')
     expect(app.state.status).toBe(t('en', 'no_config_selected'))
@@ -714,6 +750,7 @@ async function isolated(run, setup = () => {}) {
       const ui = await createTestRenderer({width:100,height:24,kittyKeyboard:true,exitOnCtrlC:false,exitSignals:[]});
       const app = new Application(createView(ui.renderer), () => { throw Error('Unexpected exit') });
       app.state.loading = false;
+      app.state.updatesLoading = false;
       ui.renderer.keyInput.on('keypress', key => {
         if(key.eventType !== 'release') { key.preventDefault(); app.handleKey(normalizeKey(key)); }
       });
@@ -743,7 +780,7 @@ async function isolated(run, setup = () => {}) {
         ui.mockInput.pressKey('END');ui.mockInput.pressEnter();
         type(path);ui.mockInput.pressEnter();
       }
-      try { ${run} } finally { ui.renderer.destroy(); }
+      try { ${run} } finally { await app.close();ui.renderer.destroy(); }
     `
     const { stdout, stderr, exitCode: code } = await runProcess(process.execPath, [
       '--eval',
@@ -1304,7 +1341,7 @@ test('config target absent target resumes only the captured requested flow and c
   )
 })
 
-test('group navigation preserves the right target and restores each page viewport', async () => {
+test('module navigation activates saved pages and restores each page viewport', async () => {
   await fixture(async ({ app, ui }) => {
     app.state.snapshot.projectTools = [
       { name: 'node', version: '20' },
@@ -1314,26 +1351,27 @@ test('group navigation preserves the right target and restores each page viewpor
     ui.mockInput.pressKey('j')
     app.state.search = 'node'
     app.state.detailScroll = 3
-    for (const [digit, focus] of [
-      ['1', 'Group1'],
-      ['2', 'Group2'],
-      ['3', 'Group3'],
-      ['4', 'Group4'],
-      ['0', 'Details'],
+    for (const [digit, focus, page] of [
+      ['1', 'Group1', 'Tools'],
+      ['2', 'Group2', 'Tasks'],
+      ['3', 'Group3', 'Environment'],
+      ['4', 'Group4', 'Dashboard'],
+      ['0', 'Details', 'Dashboard'],
     ]) {
       ui.mockInput.pressKey(digit)
       expect(app.state.focus).toBe(focus)
-      expect(app.state.page).toBe('Tools')
-      expect(app.state.selected).toBe(1)
-      expect(app.state.search).toBe('node')
-      expect(app.state.detailScroll).toBe(3)
+      expect(app.state.page).toBe(page)
     }
     ui.mockInput.pressEscape()
     expect(app.state.focus).toBe('Group4')
     ui.mockInput.pressTab()
     expect(app.state.focus).toBe('Details')
-    ui.mockInput.pressTab({ shift: true })
+    ui.mockInput.pressTab()
+    expect(app.state.focus).toBe('Navigation')
+    ui.mockInput.pressTab()
     expect(app.state.focus).toBe('Group4')
+    expect(app.state.page).toBe('Dashboard')
+    ui.mockInput.pressKey('1')
     expect(app.state.page).toBe('Tools')
     expect(app.state.selected).toBe(1)
     expect(app.state.search).toBe('node')
@@ -1367,9 +1405,11 @@ test('group navigation preserves the right target and restores each page viewpor
 test('navigation details rejects list actions and visible predicates match rendered selection', async () => {
   await isolated(
     `
-    const path=dir+'/target.toml';writeFileSync(path,'');
+    const project=dir+'/project',configDir=dir+'/'+'external-configuration-'.repeat(6);
+    mkdirSync(project);mkdirSync(configDir);process.chdir(project);
+    const path=configDir+'/target.toml';writeFileSync(path,'');
     app.state.snapshot.projectTools=[{name:'node',version:'20'},{name:'node',version:'22'}];
-    app.state.snapshot.configs=[{path,tools:['special-tool']}];
+    app.state.snapshot.configs=[{path:dir+'/other.toml',tools:['other-tool']},{path,tools:['special-tool']}];
     app.state.snapshot.tasks=[{name:'first',description:'other'},{name:'selected-task',description:'unique description'}];
     app.state.snapshot.updates=[{name:'node',current:'20',latest:'22'}];
     app.state.commands=[{name:'env',description:'unique environment'},{name:'doctor',description:'unique diagnosis'}];
@@ -1383,7 +1423,10 @@ test('navigation details rejects list actions and visible predicates match rende
     ]) {
       app.jumpToPage(page);app.state.search=query;app.clampSelection();
       const rows=app.visibleItems();assert.equal(rows.length,1,page+' visible rows');
-      assert.ok((await frame()).includes(selected),page+' rendered selection: '+selected);
+      assert.equal(app.state.selected,0,page+' filtered selection index');
+      const rendered=await frame();
+      const selectedLine=rendered.split('\\n').find(line=>line.includes('›'));
+      assert.ok(selectedLine?.includes(selected),page+' rendered selected row: '+selected+'\\n'+rendered);
       if(page==='Config') {
         assert.equal(app.selectedConfig().path,path,'Config selected entity');
         ui.mockInput.pressKey('s');assert.equal(app.state.configTarget.path,path);
@@ -1394,9 +1437,25 @@ test('navigation details rejects list actions and visible predicates match rende
       }
     }
     for(const page of ['Tools','Tasks','Updates','Config']) {
-      app.jumpToPage(page);app.state.focus='Details';
-      for(const key of ['I','i','D','d','e','y','u','U','s','R','a','A','F2','m','M','space'])ui.mockInput.pressKey(key);
-      assert.equal(app.state.overlay,null);assert.deepEqual(argv(),[]);
+      app.jumpToPage(page);ui.mockInput.pressKey('k');assert.equal(app.state.focus,'Navigation');
+      const unchanged=()=>({
+        page:app.state.page,selected:app.state.selected,search:app.state.search,status:app.state.status,
+        target:app.state.configTarget,scope:app.state.toolScope,installed:app.state.toolViewInstalled,
+        updates:[...app.state.selectedUpdates],dismissed:[...app.state.dismissedJobs],
+      });
+      const before=unchanged();
+      for(const [focus,keys]of [
+        ['Navigation',['I','i','D','e','y','u','U','s','R','a','A','F2','m','M','space','/']],
+        ['Details',['I','i','D','d','e','y','u','U','s','R','a','A','F2','m','M','space','/']],
+      ]) {
+        app.state.focus=focus;
+        for(const key of keys) {
+          ui.mockInput.pressKey(key);
+          assert.equal(app.state.focus,focus,page+' '+focus+' rejects '+key);
+          assert.equal(app.state.overlay,null);assert.deepEqual(argv(),[]);
+          assert.deepEqual(unchanged(),before,page+' '+focus+' preserves list state after '+key);
+        }
+      }
     }
     app.jumpToPage('Dashboard');ui.mockInput.pressEnter();assert.deepEqual(argv(),[]);
   `,
@@ -1741,6 +1800,7 @@ test('command target refresh and task prepend preserve the selected entity', asy
     assert.equal(app.visibleItems()[app.state.selected].id,'retained');
     assert.equal(app.state.configTarget.path,path);
     app.state.selectedUpdates=new Set(['node','vanished']);await app.refresh();
+    await until(()=>!app.state.updatesLoading,'update marks reconciliation');
     assert.equal(app.state.selectedUpdates.has('vanished'),false);
     assert.equal(app.state.selectedUpdates.has('node'),true);
   `,

@@ -8,6 +8,7 @@ import {
   createProjectConfigFile,
   globalConfigPath,
   loadSnapshot,
+  loadUpdates,
   projectConfigTarget,
   validateConfigTarget,
 } from '../mise.js'
@@ -48,6 +49,7 @@ export class Application {
   #exit
   #dying = false
   #refreshVersion = 0
+  #updatesVersion = 0
   #detailMaxScroll = 0
   #listCapacity = 0
   #detailCapacity = 0
@@ -77,6 +79,8 @@ export class Application {
       selected: 0,
       detailScroll: 0,
       selectedUpdates: new Set(),
+      updatesLoading: true,
+      updatesError: '',
       search: '',
       status: '',
       overlay: null,
@@ -101,6 +105,7 @@ export class Application {
   async close() {
     this.#dying = true
     this.#refreshVersion++
+    this.#updatesVersion++
     this.#render.dispose?.()
     await this.runner.abortAll()
   }
@@ -114,6 +119,8 @@ export class Application {
       this.state.height = viewport.height
       if (viewport.listCapacity != null)
         this.#listCapacity = viewport.listCapacity
+      if (viewport.listStart != null)
+        this.state.listStart = viewport.listStart
       if (viewport.detailCapacity != null)
         this.#detailCapacity = viewport.detailCapacity
       if (viewport.detailMaxScroll != null) {
@@ -130,11 +137,15 @@ export class Application {
   }
 
   async start() {
+    if (this.#dying)
+      return
     const settings = loadSettings()
     this.state.language = settings.language
     this.state.theme = settings.theme
     this.update()
     const refreshed = await this.refresh()
+    if (this.#dying)
+      return
     if (refreshed && !this.state.configTarget && !this.state.overlay) {
       try {
         this.state.configTarget = projectConfigTarget(this.state.snapshot.configs)
@@ -147,9 +158,14 @@ export class Application {
       }
     }
     try {
-      this.state.commands = await commandCatalog()
+      const commands = await commandCatalog()
+      if (this.#dying)
+        return
+      this.state.commands = commands
     }
     catch (error) {
+      if (this.#dying)
+        return
       this.state.status = t(this.state.language, 'command_failed', {
         error: error.message || String(error),
       })
@@ -163,30 +179,16 @@ export class Application {
     if (this.#dying)
       return false
     const version = ++this.#refreshVersion
+    void this.#refreshUpdates()
     try {
       const snapshot = await loadSnapshot()
       if (version !== this.#refreshVersion || this.#dying)
         return false
       const selections = PAGE_ORDER.map(page => [page, captureSelection(this, this.pageState(page))])
+      snapshot.updates = this.state.snapshot.updates
       this.state.snapshot = snapshot
-      const names = new Set(snapshot.updates.map(item => item.name))
-      for (const name of this.state.selectedUpdates) {
-        if (!names.has(name))
-          this.state.selectedUpdates.delete(name)
-      }
-      for (const [page, selection] of selections) {
-        const position = this.pageState(page)
-        restoreSelection(this, selection, position)
-        if (page !== this.state.page) {
-          this.state.pagePositions[page] = {
-            selected: position.selected,
-            search: position.search,
-            detailScroll: position.detailScroll,
-            listStart: position.listStart,
-            selectionKey: captureSelection(this, position),
-          }
-        }
-      }
+      for (const [page, selection] of selections)
+        this.#restorePageSelection(page, selection)
       this.state.status = ''
       this.update()
       return true
@@ -199,6 +201,47 @@ export class Application {
       })
       this.update()
       return false
+    }
+  }
+
+  async #refreshUpdates() {
+    const version = ++this.#updatesVersion
+    this.state.updatesLoading = true
+    this.state.updatesError = ''
+    this.update()
+    try {
+      const updates = await loadUpdates()
+      if (version !== this.#updatesVersion || this.#dying)
+        return
+      const selection = captureSelection(this, this.pageState(PAGE.Updates))
+      this.state.snapshot.updates = updates
+      const names = new Set(updates.map(item => item.name))
+      for (const name of this.state.selectedUpdates) {
+        if (!names.has(name))
+          this.state.selectedUpdates.delete(name)
+      }
+      this.#restorePageSelection(PAGE.Updates, selection)
+    }
+    catch (error) {
+      if (version !== this.#updatesVersion || this.#dying)
+        return
+      this.state.updatesError = error.message || String(error)
+    }
+    this.state.updatesLoading = false
+    this.update()
+  }
+
+  #restorePageSelection(page, selection) {
+    const position = this.pageState(page)
+    restoreSelection(this, selection, position)
+    if (page !== this.state.page) {
+      this.state.pagePositions[page] = {
+        selected: position.selected,
+        search: position.search,
+        detailScroll: position.detailScroll,
+        listStart: position.listStart,
+        selectionKey: captureSelection(this, position),
+      }
     }
   }
 
@@ -231,7 +274,7 @@ export class Application {
         showHelp(this)
         return
       case '/':
-        if (this.state.focus === FOCUS.Details)
+        if (this.state.focus === FOCUS.Details || this.state.focus === FOCUS.Navigation)
           return
         this.activateFocusedPage()
         toggleSearch(this)
@@ -272,11 +315,22 @@ export class Application {
         return
       case 'j':
       case 'down':
-        this.moveVertical(1)
+        if (this.state.focus === FOCUS.Navigation)
+          this.focusGroup(this.state.focusedGroup)
+        else
+          this.moveVertical(1)
         return
       case 'k':
       case 'up':
-        this.moveVertical(-1)
+        if (this.state.focus === FOCUS.Navigation)
+          return
+        if (this.state.focus !== FOCUS.Details && this.state.selected === 0) {
+          this.state.focus = FOCUS.Navigation
+          this.update()
+        }
+        else {
+          this.moveVertical(-1)
+        }
         return
       case 'tab':
       case 'backtab':
@@ -301,11 +355,14 @@ export class Application {
         return
       case 'return':
       case 'enter':
-        this.moveFocus(1)
+        if (this.state.focus === FOCUS.Navigation)
+          this.focusGroup(this.state.focusedGroup)
+        else
+          this.moveFocus(1)
         return
     }
-    // Only the focused group's real list receives action keys.
-    if (this.state.focus === FOCUS.Details)
+    // Only the active list receives item and page action keys.
+    if (this.state.focus === FOCUS.Details || this.state.focus === FOCUS.Navigation)
       return
     if (!['a', 'A', 'f2', 'm', 'M', 'i', 'I', 'D', 'space', 'u', 'U', 'R', 'n', 's', 'v', 'e', 'y'].includes(name))
       return
@@ -611,10 +668,11 @@ export class Application {
     this.update()
   }
 
-  /** Focus is independent from the page currently displayed on the right. */
+  /** Activate the module's saved page and focus its list. */
   focusGroup(index) {
     this.state.focusedGroup = index
     this.state.focus = GROUPS[index].id
+    this.activateFocusedPage()
     this.update()
   }
 
@@ -679,18 +737,14 @@ export class Application {
   }
 
   cycleFocus(delta) {
-    const seq = focusSeq()
-    const focus = seq[moveIndex(seq.indexOf(this.state.focus), delta, seq.length)]
-    if (focus === FOCUS.Details) {
-      this.state.focus = focus
-      this.update()
-    }
-    else {
-      this.focusGroup(seq.indexOf(focus))
-    }
+    const seq = focusSeq(this.state.focusedGroup)
+    this.state.focus = seq[moveIndex(seq.indexOf(this.state.focus), delta, seq.length)]
+    this.update()
   }
 
   moveVertical(delta) {
+    if (this.state.focus === FOCUS.Navigation)
+      return
     if (this.state.focus !== FOCUS.Details) {
       this.activateFocusedPage()
       this.state.selected = Math.max(0, Math.min(this.currentListLen() - 1, this.state.selected + delta))
@@ -707,6 +761,12 @@ export class Application {
   }
 
   moveFocus(delta) {
+    if (this.state.focus === FOCUS.Navigation) {
+      this.state.focusedGroup = moveIndex(this.state.focusedGroup, delta, GROUPS.length)
+      this.activateFocusedPage()
+      this.update()
+      return
+    }
     if (delta < 0) {
       if (this.state.focus === FOCUS.Details)
         this.focusGroup(this.state.focusedGroup)
@@ -719,6 +779,8 @@ export class Application {
   }
 
   #goTop() {
+    if (this.state.focus === FOCUS.Navigation)
+      return
     if (this.state.focus !== FOCUS.Details) {
       this.activateFocusedPage()
       this.state.selected = 0
@@ -728,6 +790,8 @@ export class Application {
   }
 
   #goBottom() {
+    if (this.state.focus === FOCUS.Navigation)
+      return
     if (this.state.focus !== FOCUS.Details) {
       this.activateFocusedPage()
       this.state.selected = Math.max(0, this.currentListLen() - 1)

@@ -4,6 +4,20 @@ import { t } from '../../config/i18n.js'
 import { clipColumns, supportsConfigTarget } from '../state.js'
 import { clipPath, displayPath, padColumns, scrollColumns, windowContent, wrap } from './primitives.js'
 
+function updatesStatus(s) {
+  if (s.updatesLoading)
+    return t(s.language, 'updates_loading')
+  if (s.updatesError)
+    return t(s.language, 'updates_error', { error: s.updatesError })
+  return ''
+}
+
+function dashboardUpdates(s) {
+  return updatesStatus(s) || t(s.language, 'dashboard_updates_count', {
+    count: s.snapshot.updates.filter(u => u.latest !== u.current).length,
+  })
+}
+
 /** Content list: varies by page. */
 export function listContent(s, items, capacity, width, marquee = {}) {
   const { page, snapshot, search, selected, language } = s
@@ -14,6 +28,9 @@ export function listContent(s, items, capacity, width, marquee = {}) {
   const fit = (value, columns, clip = clipColumns) => {
     if (marquee.enabled && rowIndex === selected && columns > 0 && stringWidth(value) > columns) {
       scrolling = true
+      // Keep filenames visible during the initial pause before revealing the full path.
+      if (clip === clipPath && (marquee.step || 0) < 5)
+        return clip(value, columns)
       return scrollColumns(value, columns, marquee.step)
     }
     return clip(value, columns)
@@ -23,9 +40,7 @@ export function listContent(s, items, capacity, width, marquee = {}) {
     case 'Dashboard': {
       const stats = [
         t(language, 'dashboard_tools_count', { count: snapshot.tools.length }),
-        t(language, 'dashboard_updates_count', {
-          count: snapshot.updates.filter(u => u.latest !== u.current).length,
-        }),
+        dashboardUpdates(s),
         t(language, 'dashboard_tasks_count', { count: snapshot.tasks.length }),
         t(language, 'dashboard_configs_count', { count: snapshot.configs.length }),
         '',
@@ -52,6 +67,9 @@ export function listContent(s, items, capacity, width, marquee = {}) {
     }
     case 'Updates': {
       title = t(language, 'Updates')
+      const status = updatesStatus(s)
+      if (status)
+        title = `${title} · ${status}`
       const versionWidth = Math.min(10, Math.max(1, Math.floor(width / 4)))
       const nameWidth = Math.max(1, width - versionWidth * 2 - 11)
       renderItem = u =>
@@ -103,11 +121,15 @@ export function listContent(s, items, capacity, width, marquee = {}) {
   const content = windowContent(entries, selected, capacity, s)
   if (!entries.length) {
     content.lines.push(
-      search
-        ? t(language, 'no results for "{query}"', { query: search })
-        : getEmptyMessage(page, language),
+      page === 'Updates' && updatesStatus(s)
+        ? updatesStatus(s)
+        : search
+          ? t(language, 'no results for "{query}"', { query: search })
+          : getEmptyMessage(page, language),
     )
   }
+  if (page === 'Updates' && !items.length && updatesStatus(s))
+    content.counter = ''
   return { title, count: items.length, scrolling, ...content }
 }
 
@@ -137,7 +159,7 @@ export function detailContent(s, items) {
         t(language, 'dashboard_version', { version: snapshot.mise_version }),
         '',
         t(language, 'dashboard_tools_count', { count: snapshot.tools.length }),
-        t(language, 'dashboard_updates_count', { count: snapshot.updates.length }),
+        dashboardUpdates(s),
         t(language, 'dashboard_tasks_count', { count: snapshot.tasks.length }),
         t(language, 'dashboard_configs_count', { count: snapshot.configs.length }),
         '',
@@ -178,8 +200,10 @@ export function detailContent(s, items) {
         ]
       }
       else {
-        lines = [t(language, 'No update selected')]
+        lines = [updatesStatus(s) || t(language, 'No update selected')]
       }
+      if (update && updatesStatus(s))
+        lines.unshift(updatesStatus(s), '')
       break
     }
     case 'Tasks': {

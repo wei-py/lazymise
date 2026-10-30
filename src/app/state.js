@@ -34,6 +34,7 @@ export const GROUPS = [
 ]
 
 export const FOCUS = {
+  Navigation: 'Navigation',
   Group1: 'Group1',
   Group2: 'Group2',
   Group3: 'Group3',
@@ -70,8 +71,8 @@ export function layoutMode(width, height) {
   return 'stacked'
 }
 
-export function focusSeq() {
-  return [...GROUPS.map(group => group.id), FOCUS.Details]
+export function focusSeq(focusedGroup = 0) {
+  return [FOCUS.Navigation, GROUPS[focusedGroup].id, FOCUS.Details]
 }
 
 export function moveIndex(current, delta, len) {

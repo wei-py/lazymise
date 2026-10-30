@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { Application } from './controller.js'
 import { confirmDelete } from './overlays.js'
 import { FOCUS, GROUPS, PAGE, PAGE_ORDER } from './state.js'
+import { pageActionsHint } from './view/hints.js'
 
 let application
 afterEach(async () => {
@@ -36,50 +37,146 @@ function press(app, name, modifiers = {}) {
   app.handleKey({ name, sequence: name.length === 1 ? name : '', ...modifiers })
 }
 
-test('group focus and detail focus do not replace the active target or its viewport', () => {
+test('module keys activate saved page tabs and restore each page viewport', () => {
   const { app } = fixture()
   app.jumpToPage(PAGE.Tools)
-  app.state.selected = 2
-  app.state.detailScroll = 7
-  app.state.listStart = 1
-  for (const key of ['2', '0', 'tab', 'tab', '3', '4']) {
+  Object.assign(app.state, { selected: 2, detailScroll: 7, listStart: 1 })
+  app.jumpToPage(PAGE.Console)
+  app.state.search = 'finished'
+  app.jumpToPage(PAGE.Config)
+  app.jumpToPage(PAGE.Logs)
+  for (const [key, page, focus] of [
+    ['1', PAGE.Tools, FOCUS.Group1],
+    ['2', PAGE.Console, FOCUS.Group2],
+    ['3', PAGE.Config, FOCUS.Group3],
+    ['4', PAGE.Logs, FOCUS.Group4],
+  ]) {
     press(app, key)
-    assert.equal(app.state.page, PAGE.Tools)
-    assert.equal(app.state.selected, 2)
-    assert.equal(app.state.detailScroll, 7)
-    assert.equal(app.state.listStart, 1)
+    assert.equal(app.state.page, page)
+    assert.equal(app.state.focus, focus)
   }
-  assert.equal(app.state.focus, FOCUS.Group4)
-  press(app, 'enter')
-  assert.equal(app.state.page, PAGE.Dashboard)
-  assert.equal(app.state.focus, FOCUS.Details)
-  press(app, 'escape')
-  assert.equal(app.state.focus, FOCUS.Group4)
+  press(app, '1')
+  assert.equal(app.state.selected, 2)
+  assert.equal(app.state.detailScroll, 7)
+  assert.equal(app.state.listStart, 1)
+  press(app, '2')
+  assert.equal(app.state.search, 'finished')
 })
 
-test('horizontal keys enter detail and return to the remembered group while Tab cycles groups', () => {
+test('Tab cycles navigation, the active list and details without visiting dormant modules', () => {
   const { app } = fixture()
+  for (const [index, group] of GROUPS.entries()) {
+    app.focusGroup(index)
+    const page = app.state.page
+    for (const focus of [FOCUS.Details, FOCUS.Navigation, group.id]) {
+      press(app, 'tab')
+      assert.equal(app.state.focus, focus)
+      assert.equal(app.state.page, page)
+      assert.equal(app.state.focusedGroup, index)
+    }
+    for (const focus of [FOCUS.Navigation, FOCUS.Details, group.id]) {
+      press(app, 'backtab')
+      assert.equal(app.state.focus, focus)
+      assert.equal(app.state.page, page)
+    }
+    press(app, 'tab', { shift: true })
+    assert.equal(app.state.focus, FOCUS.Navigation)
+  }
+})
+
+test('horizontal navigation activates module pages while j and Enter restore saved list rows', () => {
+  const { app } = fixture()
+  app.jumpToPage(PAGE.Tasks)
+  app.state.selected = 1
   app.jumpToPage(PAGE.Tools)
-  press(app, '2')
+  app.state.selected = 2
+  press(app, 'backtab')
+  assert.equal(app.state.focus, FOCUS.Navigation)
   press(app, 'right')
-  assert.equal(app.state.focus, FOCUS.Details)
+  assert.equal(app.state.focus, FOCUS.Navigation)
   assert.equal(app.state.page, PAGE.Tasks)
+  assert.equal(app.state.selected, 1)
+  press(app, 'j')
+  assert.equal(app.state.focus, FOCUS.Group2)
+  assert.equal(app.state.selected, 1)
+  press(app, 'k')
+  assert.equal(app.state.selected, 0)
+  assert.equal(app.state.focus, FOCUS.Group2)
+  press(app, 'up')
+  assert.equal(app.state.focus, FOCUS.Navigation)
+  press(app, 'left')
+  assert.equal(app.state.page, PAGE.Tools)
+  assert.equal(app.state.selected, 2)
   press(app, 'enter')
+  assert.equal(app.state.focus, FOCUS.Group1)
+  assert.equal(app.state.selected, 2)
   press(app, 'l')
   assert.equal(app.state.focus, FOCUS.Details)
-  press(app, '/')
-  assert.equal(app.state.overlay, null)
-  press(app, 'left')
-  assert.equal(app.state.focus, FOCUS.Group2)
+  press(app, 'j')
+  assert.equal(app.state.detailScroll, 1)
+  press(app, 'enter')
+  assert.equal(app.state.focus, FOCUS.Details)
   press(app, 'h')
-  assert.equal(app.state.focus, FOCUS.Group2)
-  press(app, 'tab')
-  assert.equal(app.state.focus, FOCUS.Group3)
-  assert.equal(app.state.page, PAGE.Tasks)
-  press(app, 'backtab')
-  assert.equal(app.state.focus, FOCUS.Group2)
-  press(app, 'tab', { shift: true })
   assert.equal(app.state.focus, FOCUS.Group1)
+  assert.equal(app.state.selected, 2)
+  press(app, 'h')
+  assert.equal(app.state.focus, FOCUS.Group1)
+})
+
+test('navigation wraps module switches, keeps subtabs, and ignores list actions and scrolling', () => {
+  const { app } = fixture()
+  app.jumpToPage(PAGE.Updates)
+  press(app, 'k')
+  assert.equal(app.state.focus, FOCUS.Navigation)
+  press(app, 'h')
+  assert.equal(app.state.page, PAGE.Dashboard)
+  press(app, 'l')
+  assert.equal(app.state.page, PAGE.Updates)
+  press(app, ']')
+  assert.equal(app.state.page, PAGE.Tools)
+  assert.equal(app.state.focus, FOCUS.Navigation)
+  press(app, '[')
+  assert.equal(app.state.page, PAGE.Updates)
+  for (const page of PAGE_ORDER) {
+    app.jumpToPage(page, FOCUS.Navigation)
+    const scope = app.state.toolScope
+    for (const key of ['/', 'a', 'A', 'f2', 'm', 'M', 'i', 'I', 'D', 'space', 'u', 'U', 'R', 'n', 's', 'v', 'e', 'y', 'g', 'G', 'up', 'pageup', 'pagedown']) {
+      press(app, key)
+      assert.equal(app.state.focus, FOCUS.Navigation)
+      assert.equal(app.state.page, page)
+      assert.equal(app.state.overlay, null)
+      assert.equal(app.state.toolScope, scope)
+      assert.equal(app.state.toolViewInstalled, false)
+      assert.equal(app.state.selectedUpdates.size, 0)
+      assert.equal(app.state.selected, 0)
+      assert.equal(app.state.detailScroll, 0)
+    }
+  }
+})
+
+test('footer controls follow navigation, list, details and overlay input focus in both languages', () => {
+  const { app } = fixture()
+  for (const language of ['en', 'zh']) {
+    app.state.language = language
+    app.jumpToPage(PAGE.Tools)
+    const keys = () => pageActionsHint(app.state).map(chip => chip.key)
+    assert.ok(keys().includes('i/I'))
+    assert.ok(keys().includes('k'))
+    press(app, 'k')
+    assert.ok(keys().includes('h/l'))
+    assert.ok(keys().includes('j/Enter'))
+    assert.ok(!keys().includes('i/I'))
+    press(app, 'j')
+    press(app, 'l')
+    assert.ok(keys().includes('j/k'))
+    assert.ok(!keys().includes('i/I'))
+    press(app, 'h')
+    press(app, '/')
+    assert.ok(keys().includes('Ctrl+u'))
+    assert.ok(!keys().includes('i/I'))
+    assert.ok(!keys().includes('h/l'))
+    press(app, 'escape')
+  }
 })
 
 test('paging uses the detail viewport rather than the left group row count', () => {
@@ -106,6 +203,7 @@ test('list movement and paging stop at the first and last row', () => {
   press(app, 'home')
   press(app, 'k')
   assert.equal(app.state.selected, 0)
+  assert.equal(app.state.focus, FOCUS.Navigation)
 })
 
 test('all nine pages are reachable through four real group tabs', () => {
@@ -178,10 +276,10 @@ test('search owns printable shortcuts and cancel restores the original viewport'
   app.jumpToPage(PAGE.Tools)
   Object.assign(app.state, { selected: 1, detailScroll: 6, listStart: 1 })
   press(app, '/')
-  for (const key of 'jq?1234:[]')
+  for (const key of 'hjklq/?1234:[]')
     press(app, key)
   assert.equal(app.state.overlay.type, 'Search')
-  assert.equal(app.state.search, 'jq?1234:[]')
+  assert.equal(app.state.search, 'hjklq/?1234:[]')
   assert.equal(app.state.focus, FOCUS.Group1)
   assert.equal(exits(), 0)
   press(app, 'escape')
@@ -196,6 +294,7 @@ test('help remembers category scroll and restores focus without selecting anothe
   const { app } = fixture()
   app.jumpToPage(PAGE.Tools)
   press(app, '2')
+  press(app, 'k')
   press(app, '?')
   press(app, 'down')
   press(app, 'down')
@@ -208,8 +307,8 @@ test('help remembers category scroll and restores focus without selecting anothe
   assert.equal(app.state.overlay.scroll, 2)
   press(app, 'return')
   assert.equal(app.state.overlay, null)
-  assert.equal(app.state.focus, FOCUS.Group2)
-  assert.equal(app.state.page, PAGE.Tools)
+  assert.equal(app.state.focus, FOCUS.Navigation)
+  assert.equal(app.state.page, PAGE.Tasks)
 })
 
 test('destructive confirmation starts on cancel and requires an explicit affirmative choice', () => {
