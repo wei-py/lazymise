@@ -120,6 +120,7 @@ These are main-workspace keys; overlays and text inputs take precedence. Item ac
 | `PgUp/PgDn`, `Ctrl+d/u` | Move or scroll by half a page |
 | `Enter` / `Esc` | Open the focused selection in detail / return to the remembered group; Enter in detail does not leave it |
 | `s` in Tools | Switch Project / Global tool scope and its default write target |
+| `v` in Tools | Toggle all installed versions, including inactive versions; keep scope and write target |
 | `L` | Switch 中文 / English |
 | `r` / `x` | Refresh / abort the newest queued or running background job |
 | `F2` | Select the exact configuration file for subsequent guided Use operations |
@@ -135,7 +136,7 @@ These are main-workspace keys; overlays and text inputs take precedence. Item ac
 | `/` | Filter the focused page list, registry, command palette, or configuration selector |
 | `Ctrl+u` in text | Clear the input; Backspace deletes one complete grapheme |
 | `?` | Open categorized built-in help |
-| `q` / `Ctrl+c` | Quit; active jobs require confirmation |
+| `q` / `Ctrl+c` | Quit immediately when idle; running or queued tasks prompt Keep running / Stop and quit (default: Keep running) |
 
 See [USAGE.md](USAGE.md) for the complete workflow and key reference.
 
@@ -155,6 +156,8 @@ The default is **Gruvbox Light** (`gruvbox-light`), fixed regardless of the term
 
 Available dark/light pairs: **Gruvbox**, **Catppuccin Mocha / Latte**, **Tokyo Night / Tokyo Night Day**, and **Solarized**. To switch: `:` → `j` to Theme → `Enter`/`l` for next or `h` for previous. Built-in help (`?`) includes the steps under Actions and the palette list/default under Notes.
 
+**Auto (terminal)** (`auto`, 中文「自动（终端）」) is an explicit additional choice. It detects the terminal's light/dark mode and redraws immediately when the terminal reports a change; if detection is unavailable, it uses the dark palette. Named palettes never follow terminal changes, and the default remains Gruvbox Light. Every theme fills the whole canvas, including trailing header/status/key-hint whitespace and uncovered cells after resize; modal surfaces and selected rows retain their intentional distinct backgrounds.
+
 Built-in help (`?`) is available in English and Chinese, with **Navigation / Actions / Notes** (**导航 / 操作 / 说明**) categories. Left/right or `[`/`]` changes category; `j/k`, up/down, `PageUp/PageDown`, and `Home/End` scroll. Each category remembers its scroll position, and the footer shows category/scroll/close hints and position. `Esc`, `Enter`, or `q` closes help and restores the underlying focus.
 
 Help keeps its controls inside the dialog; the background navigation footer is hidden while help is open.
@@ -165,7 +168,7 @@ Nested dialogs retain parent input and selection. While editing, letters, `?`, d
 
 With the Config group focused, press `n` to create `mise.toml` in the current working directory. Confirmations start on **Cancel**: press `y` explicitly, or choose Confirm with right/`l` (or Tab) and then Enter; Enter on Cancel, `Esc`, `n`, or `q` cancels. Confirmation immediately creates an empty `[tools]` table, selects the file in the list, and makes it the write target. Existing files, directories, and symlinks are never overwritten. Global configuration is unchanged; subsequent guided Use operations write to this local file.
 
-Tools defaults to the **Project** scope: effective configured project tools, including inherited global declarations (marked `global`). **Global** shows actual global configuration declarations, even when a project overrides them. Neither scope includes installed tools that no configuration references. With the Tools group focused, `s` switches scope; the scope is shown within the group. `[`/`]` instead switches Tools / Updates page tabs. Switching scope does not activate or change the terminal environment.
+Tools defaults to the **Project** scope: effective configured project tools, including inherited global declarations (marked `↑`; legend: `↑ global`). **Global** shows actual global configuration declarations, even when a project overrides them. Neither configured scope includes installed tools that no configuration references. Press `v` in Tools to see **all installed versions**, including inactive/source-less versions, but not uninstalled declarations. Press `v` again to restore the configured scope's selection and search; installed-view selection and search are also remembered separately. `v` never changes the write target. `s` switches Project / Global scope and exits installed view; selecting a configuration write target also exits installed view. `[`/`]` switches Tools / Updates page tabs. Switching scope does not activate or change the terminal environment.
 
 The default write target follows the tool scope: Project uses the project configuration, Global uses the global configuration. Global paths follow `MISE_GLOBAL_CONFIG_FILE`, then `MISE_CONFIG_DIR`, then `XDG_CONFIG_HOME/mise`, otherwise `~/.config/mise/config.toml`. Startup never creates a file. Press `F2` with a group focused, or `s` on a file in Config, to select an exact target; a manual selection also synchronizes Tools to its scope. Refresh preserves a manual choice. Selecting or cancelling never writes a file, and the target is not persisted.
 
@@ -177,6 +180,8 @@ The default write target follows the tool scope: Project uses the project config
 - `F2` inside a loaded write picker or Custom Tool changes the target without losing input. Loading pickers ask you to wait. Install-only pickers and expert commands do not intercept it.
 
 Tool scope controls which configured declarations are shown and the default guided write target. It does not redirect Install, Uninstall, Upgrade, tasks, or expert-command arguments, nor a command already submitted. The former `p/G` shortcuts and Custom Tool's hidden Tab target switch are removed.
+
+Truncated text in the focused selected list row scrolls automatically after a short dwell, exposing long names and versions without widening the terminal. It pauses while an overlay or Details has focus and resets when selection, search, page, or terminal size changes. The compact `↑` marker means the project row inherits global configuration; full origin remains in Details. In installed view, select an inactive version and press `D` to confirm uninstalling that exact `tool@version` in the background. Direct Enter on the default Cancel button, or `Esc/n/q`, does not start an uninstall.
 
 Search starts explicitly with `/`. While editing, letters including `p/G/j/k/q`, `?`, and digits are text. In local page search, Enter accepts the query without selecting a result; Tab switches between local filtering and registry-add search, where Enter selects a tool. Registry pickers have their own Tab/Shift-Tab backend filters and explicit `/` editing. Esc restores the previous query and cursor, and Ctrl+u clears input. In overlays, Esc/q returns one level outside text input, and Ctrl+c cancels the flow. Long modal paths/errors show a `PgUp/PgDn` position hint.
 
@@ -250,6 +255,8 @@ lazymise
 默认主题固定为 **Gruvbox Light**（`gruvbox-light`），不随终端深浅色变化。缺少主题或旧通用值 `default` 会回退到该主题，加载时不改写设置；已有明确命名的主题继续保留。语言与主题均可在设置中选择并持久化。
 
 可选深色／浅色配对：**Gruvbox**、**Catppuccin Mocha／Latte**、**Tokyo Night／Tokyo Night Day**、**Solarized**。切换步骤：按 `:` → `j` 选中主题 → `Enter`/`l` 下一主题、`h` 上一主题。`?` 帮助的「操作」列出步骤，「说明」列出可选主题及默认值。
+
+另可显式选择 **自动（终端）**（`auto`）：检测终端深浅色，收到运行中的模式变化后即时重绘；无法检测时保守使用深色。命名主题不会跟随终端，默认仍是 Gruvbox Light。所有主题都完整填充画布，包括页头、状态栏、快捷键栏的尾部空白及缩放后的未覆盖区域；弹层表面与选中行保留有意不同的背景。
 
 `?` 帮助按 **导航 / 操作 / 说明**（Navigation / Actions / Notes）分类；左右键或 `[`/`]` 换类，`j/k`、上下键、`PgUp/PgDn`、`Home/End` 滚动，分类各自记忆位置。`Esc/Enter/q` 关闭并恢复原焦点。输入时 `jq?123` 等内容都是文字，不触发全局键。
 
