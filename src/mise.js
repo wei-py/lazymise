@@ -28,13 +28,12 @@ async function miseText(args) {
   return out
 }
 
-/** Load complete snapshot: tools, updates, tasks, configs. */
+/** Load the local tool, task, and config snapshot without checking remote updates. */
 export async function loadSnapshot() {
-  const [version, tools, globalEntries, updates, tasks, configs] = await Promise.all([
+  const [version, tools, globalEntries, tasks, configs] = await Promise.all([
     miseText(['--version']),
     loadTools(),
     loadGlobalTools(),
-    loadUpdates(),
     loadTasks(),
     loadConfigs(),
   ])
@@ -60,7 +59,7 @@ export async function loadSnapshot() {
     tools,
     projectTools,
     globalTools,
-    updates,
+    updates: [],
     tasks,
     configs,
   }
@@ -132,19 +131,29 @@ async function loadTools(args = ['ls', '--json']) {
   }
 }
 
-async function loadUpdates() {
+export async function loadUpdates() {
   try {
-    const entries = await miseJson(['outdated', '--json'])
+    const entries = JSON.parse(await miseText(['outdated', '--json']))
     if (!Array.isArray(entries))
-      return []
-    return entries.map(e => ({
-      name: e.name || '',
-      current: e.current || e.version || '',
-      latest: e.latest || '',
-    }))
+      throw new Error('$: expected an array')
+    return entries.map((entry, index) => {
+      if (entry === null || typeof entry !== 'object' || Array.isArray(entry))
+        throw new Error(`[${index}]: expected an object`)
+      if (typeof entry.name !== 'string' || !entry.name)
+        throw new Error(`[${index}].name: expected a non-empty string`)
+      return {
+        name: entry.name,
+        current: entry.current || entry.version || '',
+        latest: entry.latest || '',
+      }
+    })
   }
-  catch {
-    return []
+  catch (error) {
+    const stderr = error.stderr?.toString().trim()
+    throw new Error(
+      `mise outdated --json: ${error.message || String(error)}${stderr ? `: ${stderr}` : ''}`,
+      { cause: error },
+    )
   }
 }
 
