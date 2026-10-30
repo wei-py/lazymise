@@ -2,13 +2,22 @@ import stringWidth from 'string-width'
 import { JOB_GLYPH } from '../../../vendor/lazy-kit/jobs.js'
 import { t } from '../../config/i18n.js'
 import { clipColumns, supportsConfigTarget } from '../state.js'
-import { clipPath, displayPath, padColumns, windowContent, wrap } from './primitives.js'
+import { clipPath, displayPath, padColumns, scrollColumns, windowContent, wrap } from './primitives.js'
 
 /** Content list: varies by page. */
-export function listContent(s, items, capacity, width) {
+export function listContent(s, items, capacity, width, marquee = {}) {
   const { page, snapshot, search, selected, language } = s
   let title = ''
   let renderItem = null
+  let scrolling = false
+  let rowIndex = -1
+  const fit = (value, columns, clip = clipColumns) => {
+    if (marquee.enabled && rowIndex === selected && columns > 0 && stringWidth(value) > columns) {
+      scrolling = true
+      return scrollColumns(value, columns, marquee.step)
+    }
+    return clip(value, columns)
+  }
 
   switch (page) {
     case 'Dashboard': {
@@ -32,38 +41,41 @@ export function listContent(s, items, capacity, width) {
     }
     case 'Tools': {
       title = t(language, 'Tools')
-      title = `${title} · ${t(language, s.toolScope === 'global' ? 'tool_scope_global' : 'tool_scope_project')}`
+      title = `${title} · ${t(language, s.toolViewInstalled ? 'tool_view_installed' : s.toolScope === 'global' ? 'tool_scope_global' : 'tool_scope_project')}`
       renderItem = (tool) => {
-        const suffix = `${clipColumns(tool.version, 12)}${!tool.active ? ` ${t(language, '(inactive)')}` : ''}`
-        const nameWidth = Math.max(1, width - stringWidth(suffix) - 4)
-        const inherited = s.toolScope !== 'global' && tool.scope === 'global'
-          ? `[${t(language, 'tool_inherited')}] `
-          : ''
-        return `${tool.installed ? '●' : '○'} ${padColumns(`${inherited}${tool.name}`, nameWidth)}  ${suffix}`
+        const suffix = `${fit(tool.version, Math.min(12, Math.max(1, Math.floor(width / 3))))}${!tool.active ? ` ${t(language, '(inactive)')}` : ''}`
+        const inherited = s.toolScope !== 'global' && tool.scope === 'global' ? '↑ ' : ''
+        const nameWidth = Math.max(1, width - stringWidth(suffix) - stringWidth(inherited) - 4)
+        return `${tool.installed ? '●' : '○'} ${inherited}${padColumns(fit(tool.name, nameWidth), nameWidth)}  ${suffix}`
       }
       break
     }
     case 'Updates': {
       title = t(language, 'Updates')
+      const versionWidth = Math.min(10, Math.max(1, Math.floor(width / 4)))
+      const nameWidth = Math.max(1, width - versionWidth * 2 - 11)
       renderItem = u =>
-        `${s.selectedUpdates.has(u.name) ? '[x]' : '[ ]'} ${clipColumns(u.name, 20)}  ${clipColumns(u.current, 10)} → ${clipColumns(u.latest, 10)}`
+        `${s.selectedUpdates.has(u.name) ? '[x]' : '[ ]'} ${fit(u.name, nameWidth)}  ${fit(u.current, versionWidth)} → ${fit(u.latest, versionWidth)}`
       break
     }
     case 'Tasks': {
       title = t(language, 'Tasks')
-      renderItem = t => `  ${clipColumns(t.name, 30)}`
+      renderItem = t => `  ${fit(t.name, Math.max(1, width - 2))}`
       break
     }
     case 'Environment':
     case 'System': {
       title = t(language, page)
-      renderItem = cmd => `${clipColumns(cmd.name, 20)}  ${clipColumns(cmd.description, 30)}`
+      const nameWidth = Math.min(20, Math.max(1, Math.floor(width / 2)))
+      renderItem = cmd => `${fit(cmd.name, nameWidth)}  ${fit(cmd.description, Math.max(1, width - nameWidth - 2))}`
       break
     }
     case 'Config': {
       title = t(language, 'Config')
-      renderItem = c =>
-        `${s.configTarget?.path === c.path ? '●' : '○'} ${clipPath(displayPath(c.path), width - 2)}${supportsConfigTarget(c.path) ? '' : ` [${t(language, 'config_target_unsupported')}]`}`
+      renderItem = (c) => {
+        const suffix = supportsConfigTarget(c.path) ? '' : ` [${t(language, 'config_target_unsupported')}]`
+        return `${s.configTarget?.path === c.path ? '●' : '○'} ${fit(displayPath(c.path), Math.max(1, width - 2 - stringWidth(suffix)), clipPath)}${suffix}`
+      }
       break
     }
     case 'Console': {
@@ -72,18 +84,22 @@ export function listContent(s, items, capacity, width) {
         const elapsed = job.startedAt
           ? ` ${Math.round(((job.endedAt || Date.now()) - job.startedAt) / 1000)}s`
           : ''
-        return `${JOB_GLYPH[job.state] || '?'} ${clipColumns(job.label, 40)}${clipColumns(elapsed, 8)}`
+        return `${JOB_GLYPH[job.state] || '?'} ${fit(job.label, Math.max(1, width - stringWidth(elapsed) - 2))}${elapsed}`
       }
       break
     }
     case 'Logs': {
       title = t(language, 'Command Log')
-      renderItem = l => `${l.success ? '✓' : '✗'} ${clipColumns(l.command, 50)}`
+      renderItem = l => `${l.success ? '✓' : '✗'} ${fit(l.command, Math.max(1, width - 2))}`
       break
     }
   }
 
-  const entries = items.map(renderItem)
+  const entries = items.map((item, index) => {
+    rowIndex = index
+    const line = renderItem(item)
+    return fit(line, width)
+  })
   const content = windowContent(entries, selected, capacity, s)
   if (!entries.length) {
     content.lines.push(
@@ -92,7 +108,7 @@ export function listContent(s, items, capacity, width) {
         : getEmptyMessage(page, language),
     )
   }
-  return { title, count: items.length, ...content }
+  return { title, count: items.length, scrolling, ...content }
 }
 
 export function getEmptyMessage(page, language) {

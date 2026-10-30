@@ -11,6 +11,30 @@ export function padColumns(value, width) {
   return `${clipped}${' '.repeat(Math.max(0, width - stringWidth(clipped)))}`
 }
 
+/** Scroll a clipped field by terminal columns, pausing at both ends of each pass. */
+export function scrollColumns(value, width, step = 0) {
+  const overflow = stringWidth(value) - width
+  if (width <= 0 || overflow <= 0)
+    return clipColumns(value, width)
+  const offset = Math.min(overflow, Math.max(0, step % (overflow + 10) - 5))
+  if (!offset)
+    return clipColumns(value, width)
+  let skipped = 0
+  let tail = ''
+  for (const { segment } of segmenter.segment(value)) {
+    const size = stringWidth(segment)
+    if (skipped < offset) {
+      skipped += size
+      if (skipped > offset)
+        tail += ' '.repeat(skipped - offset)
+    }
+    else {
+      tail += segment
+    }
+  }
+  return clipColumns(tail, width)
+}
+
 /** Wrap text to fit within a given width, preserving newlines. */
 export function wrap(value, width) {
   if (width <= 0)

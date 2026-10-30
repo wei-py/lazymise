@@ -227,3 +227,97 @@ test('destructive confirmation starts on cancel and requires an explicit affirma
   press(app, 'y')
   assert.equal(deletes, 2)
 })
+
+test('installed view retains independent identity and filters across pages and hidden target selection', () => {
+  const { app } = fixture()
+  const inactive = { name: 'node', version: '0', installed: true, active: false, source: null }
+  app.state.snapshot.tools.push(inactive, { name: 'missing', version: '9', installed: false })
+  app.jumpToPage(PAGE.Tools)
+  Object.assign(app.state, { search: 'ruby', selected: 0, detailScroll: 4 })
+  const target = { path: '/project/custom.toml', create: false }
+  app.state.configTarget = target
+  press(app, 'v')
+  assert.equal(app.state.configTarget, target)
+  assert.equal(app.state.toolScope, 'project')
+  assert.equal(app.currentListLen(), 4)
+  press(app, 'end')
+  assert.equal(app.selectedTool(), inactive)
+  app.state.search = '0'
+  app.clampSelection()
+  app.jumpToPage(PAGE.Tasks)
+  assert.equal(app.pageState(PAGE.Tools).toolViewInstalled, true)
+  assert.deepEqual(app.visibleItems(app.pageState(PAGE.Tools)), [inactive])
+  app.jumpToPage(PAGE.Tools)
+  assert.equal(app.selectedTool(), inactive)
+  // Reordering the inventory must not change the remembered selected version.
+  press(app, 'v')
+  assert.equal(app.state.search, 'ruby')
+  assert.equal(app.selectedTool().name, 'ruby')
+  assert.equal(app.state.detailScroll, 4)
+  app.state.snapshot.tools.reverse()
+  press(app, 'v')
+  assert.equal(app.selectedTool(), inactive)
+  app.jumpToPage(PAGE.Config)
+  app.setConfigTarget(target)
+  assert.equal(app.state.toolViewInstalled, false)
+  assert.equal(app.state.page, PAGE.Config)
+  app.jumpToPage(PAGE.Tools)
+  assert.equal(app.state.search, 'ruby')
+  assert.equal(app.selectedTool().name, 'ruby')
+})
+
+test('quit keeps running and queued tasks alive until an explicit exit choice', async () => {
+  for (const affirmative of [['y'], ['right', 'enter']]) {
+    const { app, exits } = fixture()
+    let started
+    const ready = new Promise((resolve) => { started = resolve })
+    let signal
+    let queuedStarted = false
+    const running = app.runner.submit({
+      label: 'running fixture',
+      serialized: true,
+      run: async (api) => {
+        signal = api.signal
+        started()
+        await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }))
+      },
+    })
+    await ready
+    const queued = app.runner.submit({
+      label: 'queued fixture',
+      serialized: true,
+      run: async () => { queuedStarted = true },
+    })
+    try {
+      for (const cancel of ['enter', 'escape', 'n', 'q']) {
+        press(app, 'q')
+        assert.equal(app.state.overlay.type, 'Quit')
+        press(app, cancel)
+        assert.equal(app.state.overlay, null)
+        assert.equal(exits(), 0)
+        assert.equal(signal.aborted, false)
+        assert.deepEqual(app.state.jobs.map(job => job.state), ['running', 'queued'])
+      }
+      press(app, 'q')
+      for (const key of affirmative) press(app, key)
+      assert.equal(exits(), 1)
+      await app.close()
+      assert.equal(signal.aborted, true)
+      assert.equal((await running).state, 'canceled')
+      assert.equal((await queued).state, 'canceled')
+      assert.equal(queuedStarted, false)
+    }
+    finally {
+      await app.close()
+    }
+  }
+})
+
+test('quit exits directly when jobs have all settled', async () => {
+  const { app, exits } = fixture()
+  await app.runner.submit({ run: async () => {} })
+  await app.runner.submit({ run: async () => { throw new Error('fixture failure') } })
+  press(app, 'q')
+  assert.equal(app.state.overlay, null)
+  assert.equal(exits(), 1)
+})

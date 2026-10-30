@@ -65,6 +65,8 @@ export class Application {
       listStart: 0,
       configTarget: null,
       toolScope: TOOL_SCOPE.Project,
+      toolViewInstalled: false,
+      toolInstalledPosition: emptyPosition(),
       toolScopePositions: {
         project: emptyPosition(),
         global: emptyPosition(),
@@ -99,6 +101,7 @@ export class Application {
   async close() {
     this.#dying = true
     this.#refreshVersion++
+    this.#render.dispose?.()
     await this.runner.abortAll()
   }
 
@@ -304,7 +307,7 @@ export class Application {
     // Only the focused group's real list receives action keys.
     if (this.state.focus === FOCUS.Details)
       return
-    if (!['a', 'A', 'f2', 'm', 'M', 'i', 'I', 'D', 'space', 'u', 'U', 'R', 'n', 's', 'e', 'y'].includes(name))
+    if (!['a', 'A', 'f2', 'm', 'M', 'i', 'I', 'D', 'space', 'u', 'U', 'R', 'n', 's', 'v', 'e', 'y'].includes(name))
       return
     this.activateFocusedPage()
     switch (name) {
@@ -332,6 +335,8 @@ export class Application {
       case PAGE.Tools:
         if (name === 's')
           this.switchToolScope()
+        else if (name === 'v')
+          this.#toggleToolView()
         else if (name === 'I')
           void useSelectedVersion(this)
         else if (name === 'i')
@@ -385,7 +390,8 @@ export class Application {
         type: 'Quit',
         parent: null,
         scroll: 0,
-        message: t(this.state.language, 'jobs still running: {count}', { count: active.length }),
+        confirmSelected: false,
+        message: t(this.state.language, 'quit_jobs_message', { count: active.length }),
         onConfirm: () => {
           this.#dying = true
           this.#exit(0)
@@ -519,6 +525,8 @@ export class Application {
   }
 
   setConfigTarget(target) {
+    if (this.state.toolViewInstalled)
+      this.#toggleToolView()
     const scope = target.path === globalConfigPath() ? TOOL_SCOPE.Global : TOOL_SCOPE.Project
     if (scope !== this.state.toolScope)
       this.restoreToolScope(scope)
@@ -527,6 +535,8 @@ export class Application {
   }
 
   restoreToolScope(scope) {
+    if (this.state.toolViewInstalled)
+      this.#toggleToolView()
     const position = this.pageState(PAGE.Tools)
     const { selected, detailScroll, search, listStart } = position
     this.state.toolScopePositions[this.state.toolScope] = {
@@ -548,6 +558,38 @@ export class Application {
       this.state.pagePositions[PAGE.Tools] = { ...next }
     }
     this.clampSelection()
+  }
+
+  #toggleToolView() {
+    const position = this.pageState(PAGE.Tools)
+    const { selected, detailScroll, search, listStart } = position
+    const saved = {
+      selected,
+      detailScroll,
+      search,
+      listStart,
+      selectionKey: captureSelection(this, position),
+    }
+    let next
+    if (this.state.toolViewInstalled) {
+      this.state.toolInstalledPosition = saved
+      next = this.state.toolScopePositions[this.state.toolScope]
+    }
+    else {
+      this.state.toolScopePositions[this.state.toolScope] = saved
+      next = this.state.toolInstalledPosition
+    }
+    this.state.toolViewInstalled = !this.state.toolViewInstalled
+    if (this.state.page === PAGE.Tools) {
+      Object.assign(this.state, next)
+      if (next.selectionKey !== undefined)
+        restoreSelection(this, next.selectionKey)
+    }
+    else {
+      this.state.pagePositions[PAGE.Tools] = { ...next }
+    }
+    this.clampSelection()
+    this.update()
   }
 
   switchToolScope() {
@@ -715,9 +757,11 @@ export class Application {
       case PAGE.Dashboard:
         return []
       case PAGE.Tools: {
-        const tools = state.toolScope === TOOL_SCOPE.Global
-          ? snapshot.globalTools
-          : snapshot.projectTools
+        const tools = state.toolViewInstalled
+          ? snapshot.tools.filter(item => item.installed)
+          : state.toolScope === TOOL_SCOPE.Global
+            ? snapshot.globalTools
+            : snapshot.projectTools
         return search ? tools.filter(item => matches(item.name, item.version)) : tools
       }
       case PAGE.Updates:
