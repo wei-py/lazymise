@@ -1,5 +1,6 @@
 [tools]
 bun = "1.4.2"
+yt-dlp = { version = "2026.10.26", rename_exe = "yt-dlp" }
 
 [tasks.lint]
 description = "Lint all JS sources"
