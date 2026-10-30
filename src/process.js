@@ -52,6 +52,7 @@ export function startProcess(command, args = [], { input, inherit = false, env, 
     })
   })
   let escalation
+  let canceling = false
   completion.finally(() => clearTimeout(escalation)).catch(() => {})
   function signalChild(signal) {
     try {
@@ -78,9 +79,12 @@ export function startProcess(command, args = [], { input, inherit = false, env, 
     child,
     completion,
     cancel() {
-      signalChild('SIGTERM')
-      escalation ??= setTimeout(signalChild, 1500, 'SIGKILL')
-      escalation.unref()
+      if (!canceling) {
+        signalChild('SIGTERM')
+        canceling = true
+        escalation = setTimeout(signalChild, 1500, 'SIGKILL')
+        escalation.unref()
+      }
       return completion
     },
   }

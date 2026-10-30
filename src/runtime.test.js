@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createJobRunner } from '../vendor/lazy-kit/jobs.js'
-import { runProcess, startProcess } from './process.js'
+import { cancelProcesses, runProcess, startProcess } from './process.js'
 import { releaseTarget } from './release.js'
 
 const main = join(import.meta.dirname, 'main.js')
@@ -71,14 +71,14 @@ test('jobs drain output, preserve errors, and serialize after cancellation', asy
   await runner.abortAll()
 })
 
-test('cancel waits for the real process to exit and retains signal status', async () => {
+test('overlapping shutdown cancellation waits for process exit and retains signal status', async () => {
   let ready
   const started = new Promise((resolve) => { ready = resolve })
   const child = startProcess(process.execPath, ['--eval', 'console.log(\'ready\');setInterval(()=>{},1000)'], {
     onOutput: () => ready(),
   })
   await started
-  const result = await child.cancel()
+  const [result] = await Promise.all([child.cancel(), cancelProcesses(), child.cancel()])
   assert.notEqual(result.exitCode, 0)
   assert.throws(() => process.kill(child.child.pid, 0), { code: 'ESRCH' })
 })
