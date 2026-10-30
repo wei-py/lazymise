@@ -272,7 +272,7 @@ export function renderOverlay(nodes, s, app, width, height) {
       const languageName = LANGUAGES.find(item => item.id === s.language)?.name || s.language
       lines = [
         `${t(language, 'Language')}: ${languageName}`,
-        `${t(language, 'Theme')}: ${s.theme}`,
+        `${t(language, 'Theme')}: ${t(language, s.theme === 'auto' ? 'Auto (terminal)' : s.theme)}`,
       ]
       selected = overlay.cursor ?? 0
       break
@@ -297,8 +297,8 @@ export function renderOverlay(nodes, s, app, width, height) {
   // Hints remain on the bottom row even while long content scrolls above them.
   if (confirming) {
     lines.push([
-      fg(overlay.confirmSelected ? COLORS.muted : COLORS.focus)(`${overlay.confirmSelected ? '  ' : '› '}${t(language, 'confirm_cancel')}   `),
-      fg(overlay.confirmSelected ? COLORS.focus : COLORS.muted)(`${overlay.confirmSelected ? '› ' : '  '}${t(language, 'confirm_accept')}`),
+      fg(overlay.confirmSelected ? COLORS.muted : COLORS.focus)(`${overlay.confirmSelected ? '  ' : '› '}${t(language, overlay.type === 'Quit' ? 'quit_keep_running' : 'confirm_cancel')}   `),
+      fg(overlay.confirmSelected ? COLORS.focus : COLORS.muted)(`${overlay.confirmSelected ? '› ' : '  '}${t(language, overlay.type === 'Quit' ? 'quit_stop_and_exit' : 'confirm_accept')}`),
     ])
   }
   const chips = overlayHint(overlay, language)

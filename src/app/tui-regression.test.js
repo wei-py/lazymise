@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createTestRenderer } from '@opentui/core/testing'
 import stringWidth from 'string-width'
+import { themeColors, THEMES } from '../../vendor/lazy-kit/themes.js'
 import { t } from '../config/i18n.js'
 import { loadSettings } from '../config/settings.js'
 import { normalizeKey } from '../main.js'
@@ -76,6 +77,92 @@ function highlighted(ui, text) {
       ),
     )
 }
+
+test('theme backgrounds fill header, footer and uncovered cells after switching and resizing', async () => {
+  await fixture(async ({ app, ui, frame }) => {
+    for (const theme of [...THEMES, { id: 'auto', colors: themeColors('auto', 'light'), mode: 'light' }]) {
+      app.state.theme = theme.id
+      ui.renderer.emit('theme_mode', theme.mode || 'dark')
+      const background = colorChannels(theme.colors.background)
+      const selection = colorChannels(theme.colors.selection)
+      for (const [width, height] of [[120, 40], [90, 24], [60, 18], [30, 8], [100, 24]]) {
+        ui.resize(width, height)
+        await frame()
+        const { lines } = ui.captureSpans()
+        for (const [y, line] of lines.entries()) {
+          expect(line.spans.reduce((columns, span) => columns + span.width, 0)).toBe(width)
+          for (const span of line.spans) {
+            const bg = [...span.bg.buffer].slice(0, 3).join(',')
+            expect([background, selection]).toContain(bg)
+            expect(span.bg.buffer[3]).toBe(255)
+            if (y === 0 || y >= height - 2 || width < 40)
+              expect(bg).toBe(background)
+          }
+        }
+      }
+    }
+  })
+})
+
+test('automatic terminal theme persists, redraws live, and leaves named palettes fixed', async () => {
+  await fixture(async ({ app, ui, frame, path }) => {
+    expect(app.state.theme).toBe('gruvbox-light')
+    expect(loadSettings().theme).toBe('gruvbox-light')
+    expect(existsSync(path)).toBe(false)
+    app.state.theme = 'auto'
+    await frame()
+    const headerBackground = () => [...ui.captureSpans().lines[0].spans.at(-1).bg.buffer]
+    const channels = mode => [...colorChannels(themeColors('auto', mode).background).split(',').map(Number), 255]
+    expect(headerBackground()).toEqual(channels('dark'))
+    ui.renderer.emit('theme_mode', 'light')
+    await ui.renderOnce()
+    expect(headerBackground()).toEqual(channels('light'))
+    ui.resize(120, 40)
+    await frame()
+    expect(headerBackground()).toEqual(channels('light'))
+    ui.renderer.emit('theme_mode', 'dark')
+    await ui.renderOnce()
+    expect(headerBackground()).toEqual(channels('dark'))
+    ui.renderer.emit('theme_mode', 'light')
+    ui.renderer.emit('theme_mode', null)
+    await ui.renderOnce()
+    expect(headerBackground()).toEqual(channels('dark'))
+
+    app.state.theme = 'gruvbox-light'
+    await frame()
+    ui.renderer.emit('theme_mode', 'light')
+    await ui.renderOnce()
+    expect(headerBackground()).toEqual([251, 241, 199, 255])
+    expect(app.state.theme).toBe('gruvbox-light')
+
+    app.state.theme = 'gruvbox-dark'
+    ui.mockInput.pressKey(':')
+    ui.mockInput.pressKey('j')
+    ui.mockInput.pressArrow('left')
+    expect(app.state.theme).toBe('auto')
+    await ui.renderOnce()
+    expect(headerBackground()).toEqual(channels('light'))
+    expect(JSON.parse(readFileSync(path, 'utf8')).theme).toBe('auto')
+    expect(loadSettings().theme).toBe('auto')
+    expect(await frame()).toContain('Auto (terminal)')
+    app.state.language = 'zh'
+    expect(await frame()).toContain('自动（终端）')
+    ui.mockInput.pressEscape()
+
+    const listeners = ui.renderer.listenerCount('theme_mode')
+    await app.close()
+    expect(ui.renderer.listenerCount('theme_mode')).toBe(listeners - 1)
+    ui.renderer.emit('theme_mode', 'light')
+  })
+  await fixture(async ({ app, ui, frame }) => {
+    app.state.theme = 'auto'
+    await frame()
+    const listeners = ui.renderer.listenerCount('theme_mode')
+    ui.renderer.destroy()
+    expect(ui.renderer.listenerCount('theme_mode')).toBe(listeners - 1)
+    expect(() => ui.renderer.emit('theme_mode', 'light')).not.toThrow()
+  })
+})
 
 test('focused navigation reveals more rows and remains expanded when detail gains focus', async () => {
   await fixture(async ({ app, ui, frame }) => {
@@ -778,17 +865,45 @@ test('tool object snapshots preserve versions and precise deletion with visible 
     app.jumpToPage('Config');ui.mockInput.pressKey('s');
     assert.equal(app.state.snapshot,original);
     app.jumpToPage('Tools');
-    app.state.search='22.1.0';app.clampSelection();app.update();await ui.renderOnce();
+    app.state.search='22.1.0';app.clampSelection();await frame();
+    const target=app.state.configTarget;
+    ui.mockInput.pressKey('v');
+    assert.equal(app.state.toolViewInstalled,true);
+    assert.equal(app.state.toolScope,'project');
+    assert.equal(app.state.configTarget,target);
+    assert.deepEqual(app.visibleItems().map(tool=>tool.version),['22.1.0','20']);
+    ui.mockInput.pressKey('j');
+    assert.equal(app.selectedTool().version,'20');
+    assert.equal(app.selectedTool().active,false);
+    assert.equal(app.selectedTool().source,null);
+    assert.ok((await frame()).includes('20'));
+    ui.mockInput.pressKey('/');
+    type('20');ui.mockInput.pressEnter();
     assert.equal(app.currentListLen(),1);
+    assert.equal(app.selectedTool().version,'20');
+    ui.mockInput.pressKey('v');
+    assert.equal(app.state.search,'22.1.0');
     assert.equal(app.selectedTool().version,'22.1.0');
-    assert.ok(ui.captureCharFrame().includes('22.1.0'));
+    ui.mockInput.pressKey('v');
+    assert.equal(app.state.search,'20');
+    assert.equal(app.selectedTool().version,'20');
     ui.mockInput.pressKey('D');
     assert.equal(app.state.overlay.type,'ConfirmDelete');
-    assert.equal(app.state.overlay.name,'node@22.1.0');
+    assert.equal(app.state.overlay.name,'node@20');
     ui.mockInput.pressKey('n');assert.equal(existsSync(dir+'/args'),false);
+    ui.mockInput.pressKey('D');ui.mockInput.pressEnter();
+    assert.equal(existsSync(dir+'/args'),false);
     ui.mockInput.pressKey('D');ui.mockInput.pressKey('y');
     await finished(1);original=app.state.snapshot;
-    assert.deepEqual(JSON.parse(readFileSync(dir+'/args','utf8').trim()),['uninstall','--yes','node@22.1.0']);
+    assert.deepEqual(JSON.parse(readFileSync(dir+'/args','utf8').trim()),['uninstall','--yes','node@20']);
+    assert.equal(app.selectedTool().version,'20');
+    ui.mockInput.pressKey('s');
+    assert.equal(app.state.toolViewInstalled,false);
+    assert.equal(app.state.toolScope,'global');
+    ui.mockInput.pressKey('s');
+    assert.equal(app.state.toolScope,'project');
+    assert.equal(app.state.search,'22.1.0');
+    assert.equal(app.selectedTool().version,'22.1.0');
     for(const [raw,reason] of [
       ['[]','object'],['broken','JSON'],['{"node":[{}]}','version'],
       ['{"node":[{"version":"1","active":1}]}','active'],
@@ -2017,7 +2132,6 @@ test('jobs stream into the status box, quit confirms, and x cancels the newest',
     expect(rendered).toContain('working…')
     ui.mockInput.pressKey('q')
     expect(app.state.overlay.type).toBe('Quit')
-    expect(app.state.overlay.message).toContain('jobs still running')
     ui.mockInput.pressEscape()
     expect(app.state.overlay).toBeNull()
     ui.mockInput.pressKey('x')

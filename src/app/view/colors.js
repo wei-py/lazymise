@@ -5,6 +5,6 @@ import { DEFAULT_THEME, themeColors } from '../../../vendor/lazy-kit/themes.js'
 // the per-frame swap applies everywhere without threading COLORS through calls.
 export const COLORS = { ...themeColors(DEFAULT_THEME) }
 
-export function setTheme(id) {
-  Object.assign(COLORS, themeColors(id))
+export function setTheme(id, mode) {
+  Object.assign(COLORS, themeColors(id, mode))
 }

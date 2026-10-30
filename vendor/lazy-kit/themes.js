@@ -1,8 +1,45 @@
 /**
- * Named terminal palettes with a fixed Gruvbox Light default.
- * Every palette carries the same semantic keys.
+ * Terminal palettes. Gruvbox Light is the fixed default; explicit `auto` follows
+ * the terminal mode. Auto palettes stay opaque for consistent contrast.
  */
+const AUTO_DARK = {
+  background: '#151922',
+  surface: '#202633',
+  text: '#e6edf3',
+  muted: '#b0bac8',
+  border: '#66768e',
+  focus: '#9dc5ff',
+  selection: '#303c50',
+  selectionText: '#e6edf3',
+  warning: '#f3d28a',
+  error: '#ff9eaa',
+  present: '#a3df9b',
+  aur: '#d9b8ff',
+  repo: '#9dc5ff',
+}
+
+const AUTO_LIGHT = {
+  background: '#f8fafc',
+  surface: '#f0f4f8',
+  text: '#172436',
+  muted: '#45566c',
+  border: '#68798f',
+  focus: '#124fa3',
+  selection: '#dbe7f5',
+  selectionText: '#172436',
+  warning: '#785000',
+  error: '#9e1630',
+  present: '#1b6537',
+  aur: '#653098',
+  repo: '#124fa3',
+}
+
 export const THEMES = [
+  {
+    id: 'auto',
+    name: 'Auto (terminal)',
+    colors: AUTO_DARK,
+  },
   {
     id: 'gruvbox-dark',
     name: 'Gruvbox Dark',
@@ -163,8 +200,11 @@ export function isTheme(id) {
   return THEMES.some(theme => theme.id === id)
 }
 
-export function themeColors(id) {
-  return (THEMES.find(theme => theme.id === id) || THEMES.find(theme => theme.id === DEFAULT_THEME)).colors
+export function themeColors(id, mode = 'dark') {
+  const theme = THEMES.find(theme => theme.id === id)
+  if (theme?.id === 'auto')
+    return mode === 'light' ? AUTO_LIGHT : AUTO_DARK
+  return (theme || THEMES.find(theme => theme.id === DEFAULT_THEME)).colors
 }
 
 export function themeName(id) {

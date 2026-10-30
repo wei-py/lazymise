@@ -26,6 +26,13 @@ const NODE_IDS = [
 /** Create the view function that renders application state. */
 export function createView(renderer) {
   const nodes = {}
+  let background
+  let detectedMode = renderer.themeMode === 'light' ? 'light' : 'dark'
+  let lastState
+  let lastApp
+  let marqueeTimer
+  let marqueeStep = 0
+  let marqueeContext = []
   for (const id of NODE_IDS) {
     nodes[id] = new TextRenderable(renderer, {
       id,
@@ -43,10 +50,25 @@ export function createView(renderer) {
     renderer.root.add(nodes[id])
   }
 
-  return (s, app) => {
+  function render(s, app) {
+    lastState = s
+    lastApp = app
     const { width, height } = renderer
     const { language } = s
-    setTheme(s.theme)
+    const context = [s.focus, s.focusedGroup, s.groupTabs[s.focusedGroup], s.selected, s.search, s.language, s.toolScope, s.toolViewInstalled, s.snapshot, s.overlay, width, height]
+    if (context.some((value, index) => value !== marqueeContext[index])) {
+      marqueeStep = 0
+      marqueeContext = context
+      clearTimeout(marqueeTimer)
+      marqueeTimer = undefined
+    }
+    let scrolling = false
+    setTheme(s.theme, detectedMode)
+    // TextRenderable.bg paints glyph cells only; the canvas owns all remaining cells.
+    if (background !== COLORS.background) {
+      background = COLORS.background
+      renderer.setBackgroundColor(background)
+    }
     for (const node of Object.values(nodes)) node.visible = false
     const mode = layoutMode(width, height)
     let detailMaxScroll = null
@@ -76,11 +98,15 @@ export function createView(renderer) {
       const position = app.pageState(page)
       const rows = Math.max(0, panelHeight - 2)
       const context = [
-        ...(page === 'Tools' ? [t(language, position.toolScope === 'global' ? 'tool_scope_global' : 'tool_scope_project')] : []),
+        ...(page === 'Tools' ? [t(language, position.toolViewInstalled ? 'tool_view_installed' : position.toolScope === 'global' ? 'tool_scope_global' : 'tool_scope_project')] : []),
         ...(position.search ? [`/ ${position.search}`] : []),
       ].join(' · ')
       const contextRows = context && rows > 1 ? 1 : 0
-      const content = listContent(position, app.visibleItems(position), rows - contextRows, panelWidth - 3)
+      const content = listContent(position, app.visibleItems(position), rows - contextRows, panelWidth - 3, {
+        enabled: !s.overlay && s.focus === group.id && rows > contextRows,
+        step: marqueeStep,
+      })
+      scrolling ||= content.scrolling
       if (contextRows) {
         content.lines.unshift(context)
         if (content.selected >= 0)
@@ -152,9 +178,44 @@ export function createView(renderer) {
     }
     showNode(nodes, 'keys', 0, height - 1, width, 1, [segments], COLORS.muted)
     const overlayMaxScroll = s.overlay ? renderOverlay(nodes, s, app, width, height) : null
+    if (scrolling && !marqueeTimer) {
+      marqueeTimer = setTimeout(() => {
+        marqueeTimer = undefined
+        marqueeStep++
+        if (lastState)
+          render(lastState, lastApp)
+      }, 180)
+      marqueeTimer.unref?.()
+    }
+    else if (!scrolling) {
+      clearTimeout(marqueeTimer)
+      marqueeTimer = undefined
+      marqueeStep = 0
+    }
     renderer.requestRender()
     return { width, height, detailMaxScroll, overlayMaxScroll, listCapacity, detailCapacity }
   }
+
+  function onThemeMode(mode) {
+    const nextMode = mode === 'light' ? 'light' : 'dark'
+    if (nextMode === detectedMode)
+      return
+    detectedMode = nextMode
+    if (lastState?.theme === 'auto')
+      lastApp.update()
+  }
+  function dispose() {
+    clearTimeout(marqueeTimer)
+    marqueeTimer = undefined
+    renderer.off('theme_mode', onThemeMode)
+    renderer.off('destroy', dispose)
+    lastState = undefined
+    lastApp = undefined
+  }
+  renderer.on('theme_mode', onThemeMode)
+  renderer.once('destroy', dispose)
+  render.dispose = dispose
+  return render
 }
 
 function renderStatus(s, app, shownJobs, activeCount) {
