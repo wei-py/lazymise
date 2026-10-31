@@ -58,7 +58,8 @@ export function listContent(s, items, capacity, width, marquee = {}) {
       title = t(language, 'Tools')
       title = `${title} · ${t(language, s.toolViewInstalled ? 'tool_view_installed' : s.toolScope === 'global' ? 'tool_scope_global' : 'tool_scope_project')}`
       renderItem = (tool) => {
-        const suffix = `${fit(tool.version, Math.min(12, Math.max(1, Math.floor(width / 3))))}${!tool.active ? ` ${t(language, '(inactive)')}` : ''}`
+        const status = !tool.installed ? ` (${t(language, 'not_installed')})` : !tool.active ? ` ${t(language, '(inactive)')}` : ''
+        const suffix = `${fit(tool.version, Math.min(12, Math.max(1, Math.floor(width / 3))))}${status}`
         const inherited = s.toolScope !== 'global' && tool.scope === 'global' ? '↑ ' : ''
         const nameWidth = Math.max(1, width - stringWidth(suffix) - stringWidth(inherited) - 4)
         return `${tool.installed ? '●' : '○'} ${inherited}${padColumns(fit(tool.name, nameWidth), nameWidth)}  ${suffix}`

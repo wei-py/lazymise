@@ -880,6 +880,39 @@ test('shifted Kitty and raw keys preserve uppercase actions and text', async () 
   })
 })
 
+test('configured tools distinguish missing installations from inactive installed versions', async () => {
+  await fixture(async ({ app, ui, frame }) => {
+    const tools = [
+      { name: 'missing-tool', version: '1', installed: false, active: false },
+      { name: 'inactive-tool', version: '2', installed: true, active: false },
+      { name: 'enabled-tool', version: '3', installed: true, active: true },
+    ]
+    Object.assign(app.state.snapshot, { tools, projectTools: tools })
+    app.jumpToPage('Tools')
+    for (const language of ['en', 'zh']) {
+      app.state.language = language
+      for (const [width, height] of [[120, 40], [60, 18]]) {
+        ui.resize(width, height)
+        const screen = await frame()
+        const row = name => screen.split('\n').find(line => line.includes(name) && /[○●]/u.test(line))?.split('│')[1]
+        expect(row('missing-tool')).toContain(t(language, 'not_installed'))
+        expect(row('missing-tool')).not.toContain(t(language, 'inactive'))
+        expect(row('inactive-tool')).toContain(t(language, 'inactive'))
+        expect(row('inactive-tool')).not.toContain(t(language, 'not_installed'))
+        expect(row('enabled-tool')).not.toContain(t(language, 'inactive'))
+        expect(row('enabled-tool')).not.toContain(t(language, 'not_installed'))
+      }
+      ui.mockInput.pressKey('v')
+      const installed = await frame()
+      expect(installed).not.toContain('missing-tool')
+      expect(installed).toContain('inactive-tool')
+      expect(installed).toContain('enabled-tool')
+      ui.mockInput.pressKey('v')
+      expect(await frame()).toContain('missing-tool')
+    }
+  })
+})
+
 test('tool object snapshots preserve versions and precise deletion with visible errors', async () => {
   await isolated(
     `
