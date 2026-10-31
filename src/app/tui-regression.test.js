@@ -913,6 +913,57 @@ test('configured tools distinguish missing installations from inactive installed
   })
 })
 
+test('guided uninstall removes its source declaration only after successful uninstall', async () => {
+  for (const mode of ['installed', 'missing', 'uninstall-failed', 'cleanup-failed']) {
+    await isolated(`
+      const mode=${JSON.stringify(mode)}, source=dir+'/source.toml';
+      writeFileSync(source,'[tools]\\nnode = "latest"\\n');
+      writeFileSync(dir+'/installed',mode==='missing'?'false':'true');
+      await app.refresh();app.jumpToPage('Tools');
+      const target=dir+'/unrelated.toml';writeFileSync(target,'[tools]\\nruby = "3"\\n');
+      app.state.configTarget={path:target,create:false};
+      ui.mockInput.pressKey('D');ui.mockInput.pressEnter();
+      assert.equal(argv().length,0);
+      assert.ok(readFileSync(source,'utf8').includes('node'));
+      ui.mockInput.pressKey('D');ui.mockInput.pressKey('y');
+      const expected=mode==='missing'||mode==='uninstall-failed'?1:2;
+      await finished(expected);
+      if(mode.endsWith('failed')) {
+        assert.ok(readFileSync(source,'utf8').includes('node'));
+        assert.equal(app.state.logs[0].success,false);
+        assert.ok(app.state.status.includes('fixture failure'));
+      } else {
+        assert.equal(readFileSync(source,'utf8'),'[tools]\\n');
+        assert.equal(app.visibleItems().length,0);
+      }
+      assert.equal(readFileSync(target,'utf8'),'[tools]\\nruby = "3"\\n');
+      if(mode==='uninstall-failed')assert.equal(argv().length,1);
+    `, ({ dir, executable }) => {
+      executable('mise', `
+        import {readFileSync,writeFileSync,appendFileSync} from 'node:fs';
+        const dir=${JSON.stringify(dir)},mode=${JSON.stringify(mode)},args=process.argv.slice(2);
+        const source=dir+'/source.toml';
+        if(args[0]==='ls') {
+          console.log(JSON.stringify(readFileSync(source,'utf8').includes('node')?{
+            node:[{version:'22',requested_version:'latest',installed:readFileSync(dir+'/installed','utf8')==='true',active:true,source:{path:source}}]
+          }:{}));
+        } else if(args[0]==='uninstall'||args[0]==='unuse') {
+          appendFileSync(dir+'/args',JSON.stringify(args)+'\\n');
+          if(mode===args[0].replace('unuse','cleanup')+'-failed') {
+            console.error('fixture failure');process.exit(1);
+          }
+          if(args[0]==='uninstall')writeFileSync(dir+'/installed','false');
+          else {
+            if(args[args.indexOf('--path')+1]!==source||!args.includes('--no-prune')||!args.includes('node@latest'))
+              throw Error('wrong cleanup target');
+            writeFileSync(source,'[tools]\\n');
+          }
+        } else console.log(args[0]==='config'?'[]':'{}');
+      `)
+    })
+  }
+})
+
 test('tool object snapshots preserve versions and precise deletion with visible errors', async () => {
   await isolated(
     `

@@ -919,14 +919,14 @@ export function confirmCommand(app, command, args, parent) {
   app.update()
 }
 
-export function confirmDelete(app, name, onConfirm) {
+export function confirmDelete(app, name, onConfirm, source = null) {
   app.state.overlay = {
     type: 'ConfirmDelete',
     parent: null,
     name,
     scroll: 0,
     onConfirm,
-    message: t(app.state.language, 'confirm_delete', { name }),
+    message: t(app.state.language, source ? 'confirm_delete_configured' : 'confirm_delete', { name, path: source }),
   }
   app.update()
 }

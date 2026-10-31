@@ -493,8 +493,17 @@ export class Application {
     if (!tool)
       return
     const spec = `${tool.name}@${tool.version}`
-    confirmDelete(this, spec, () =>
-      executeBackground(this, ['uninstall', '--yes', spec], `uninstall ${spec}`))
+    confirmDelete(this, spec, async () => {
+      if (tool.installed) {
+        const job = await executeBackground(this, ['uninstall', '--yes', spec], `uninstall ${spec}`)
+        if (job.state !== 'done')
+          return
+      }
+      if (tool.source) {
+        const requested = `${tool.name}@${tool.requested || tool.version}`
+        await executeBackground(this, ['unuse', '--yes', '--no-prune', '--path', tool.source, requested], `unuse ${requested}`)
+      }
+    }, tool.source)
   }
 
   toggleSelectedUpdate() {
